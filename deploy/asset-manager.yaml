@@ -1,0 +1,67 @@
+# Overview: asset-manager single Rust service; static UI and API under /asset-manager.
+# Prerequisites: default namespace, asset-manager-credentials Secret with DATABASE_URL,
+# S3_ACCESS_KEY/S3_SECRET_KEY; existing RustFS assets bucket and initialized asset_manager DB.
+# Verify: one Ready Pod; /asset-manager/healthz and /asset-manager/api/tags over HTTPS.
+# Data: no PVC. Existing RustFS/YugabyteDB retain their current PV policy and backups.
+# NodePort 30820 is reserved for ubuntu.home.arpa Nginx on the private LAN.
+# Deleting this Deployment does not delete assets or the DB. Keep DB and bucket backups together.
+# main is intentionally mutable; the deployment webhook recreates Pods after publication.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: asset-manager
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: asset-manager}
+  template:
+    metadata:
+      labels: {app: asset-manager}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001}
+      containers:
+        - name: app
+          image: ghcr.io/uiui611/asset-manager:main
+          imagePullPolicy: Always
+          ports: [{name: http, containerPort: 8080}]
+          env:
+            - {name: APP_BASE_PATH, value: /asset-manager}
+            - {name: PUBLIC_ORIGIN, value: 'https://ubuntu.home.arpa'}
+            - {name: STATIC_DIR, value: /app/dist}
+            - {name: S3_BUCKET, value: assets}
+            - {name: S3_ENDPOINT, value: 'http://rustfs.default.svc.cluster.local:9000'}
+          envFrom:
+            - secretRef: {name: asset-manager-credentials}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: '1', memory: 384Mi}
+          readinessProbe:
+            httpGet: {path: /asset-manager/readyz, port: http}
+          livenessProbe:
+            httpGet: {path: /asset-manager/healthz, port: http}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: asset-manager
+  namespace: default
+spec:
+  type: NodePort
+  selector: {app: asset-manager}
+  ports:
+    - {name: http, port: 8080, targetPort: http, nodePort: 30820}
+
+
+
+
+
+
+
+
+
