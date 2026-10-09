@@ -33,8 +33,6 @@ export class AssetsPage extends LitElement {
     draftName: { state: true },
     draftDescription: { state: true },
     draftTags: { state: true },
-    pending: { state: true },
-    duplicates: { state: true },
     refs: { state: true },
     scrollTop: { state: true },
     columns: { state: true },
@@ -64,8 +62,6 @@ export class AssetsPage extends LitElement {
   draftName = "";
   draftDescription = "";
   draftTags: string[] = [];
-  pending: JournalItem[] = [];
-  duplicates: string[] = [];
   refs: string[] = [];
   audioScroll = 0;
   scrollTop = 0;
@@ -138,7 +134,6 @@ export class AssetsPage extends LitElement {
     this.localSplit = undefined;
     this.modal = "";
     this.detail = null;
-    this.pending = [];
     this.splitFiles = [];
     if (this.preview) URL.revokeObjectURL(this.preview);
     this.preview = "";
@@ -433,7 +428,7 @@ export class AssetsPage extends LitElement {
   private renderDialog() {
     return html`<div class="overlay" @keydown=${(e: KeyboardEvent) => {
       if (e.key === "Escape" && !app.busy) this.close();
-    }}><section class="dialog" role="dialog" aria-modal="true" aria-label="素材の操作"><div class="row spread"><h2>${{ detail: "素材の詳細", import: "素材を登録", trash: "削除", tags: "タグを一括追加", split: "タイル分割" }[this.modal]}</h2><button class="quiet" aria-label="閉じる" ?disabled=${app.busy} @click=${() => this.close()}>${icon("close")}</button></div><operation-progress></operation-progress>
+    }}><section class="dialog" role="dialog" aria-modal="true" aria-label="素材の操作"><div class="row spread"><h2>${{ detail: "素材の詳細", trash: "削除", tags: "タグを一括追加", split: "タイル分割" }[this.modal]}</h2><button class="quiet" aria-label="閉じる" ?disabled=${app.busy} @click=${() => this.close()}>${icon("close")}</button></div><operation-progress></operation-progress>
       ${
         this.modal === "detail" && this.detail
           ? html`<div class="detail-layout"><div class="stack"><div class="preview-large checker">${

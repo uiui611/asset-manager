@@ -174,14 +174,10 @@ export class AssetService extends EventTarget {
     this.requireConnected();
     validateWriteSize(files.map((f) => f.size));
     const items: JournalItem[] = [];
-    const duplicates: string[] = [];
-    const hashes = new Set(this.files.map((f) => f.sha256));
     for (const file of files) {
       this.progress(`${file.name} を確認中`);
       const { blob, type } = await validateImport(file);
       const sha256 = await hashBlob(blob);
-      if (hashes.has(sha256)) duplicates.push(file.name);
-      hashes.add(sha256);
       const id = uid();
       items.push({
         id,
@@ -199,7 +195,7 @@ export class AssetService extends EventTarget {
       });
     }
     validateWriteSize(items.map((i) => i.blob?.size || 0));
-    return { items, duplicates };
+    return { items };
   }
   async startOperation(
     type: OperationJournal["type"],
