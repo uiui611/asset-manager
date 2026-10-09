@@ -15,29 +15,25 @@ afterEach(async () => {
 });
 it("restarts only unfinished items and releases completed blobs", async () => {
   const service = new AssetService();
-  const create = vi
-    .spyOn(storage, "createFile")
-    .mockImplementation(async (input) => {
-      if (input.metadata.assetId === "b") throw new Error("network");
-      return {
-        ...input.metadata,
-        fileId: `d-${input.metadata.assetId}`,
-        version: "1",
-        modifiedTime: "now",
-        size: 1,
-        tagIds: [],
-        description: "",
-      } as StoredFile;
-    });
+  const create = vi.spyOn(storage, "createFile").mockImplementation(async (input) => {
+    if (input.metadata.assetId === "b") throw new Error("network");
+    return {
+      ...input.metadata,
+      fileId: `d-${input.metadata.assetId}`,
+      version: "1",
+      modifiedTime: "now",
+      size: 1,
+      tagIds: [],
+      description: "",
+    } as StoredFile;
+  });
   const items = ["a", "b"].map((id) => ({
     id,
     name: `${id}.png`,
     blob: new Blob(["x"]),
     metadata: { assetId: id },
   }));
-  await expect(service.startOperation("upload", items)).rejects.toThrow(
-    "network",
-  );
+  await expect(service.startOperation("upload", items)).rejects.toThrow("network");
   const journal = (await db.operationJournal.toArray())[0];
   expect(journal.completedItems).toEqual(["a"]);
   expect(journal.pendingItems).toEqual(["b"]);
@@ -55,11 +51,7 @@ it("restarts only unfinished items and releases completed blobs", async () => {
       }) as StoredFile,
   );
   await service.resume(journal.id);
-  expect(create.mock.calls.map((c) => c[0].metadata.assetId)).toEqual([
-    "a",
-    "b",
-    "b",
-  ]);
+  expect(create.mock.calls.map((c) => c[0].metadata.assetId)).toEqual(["a", "b", "b"]);
   expect((await db.operationJournal.get(journal.id))?.status).toBe("completed");
   expect(await db.assets.count()).toBe(2);
 });
@@ -106,23 +98,21 @@ it("limits saves to two workers, reports progress and drains in-flight work on c
   let active = 0,
     peak = 0;
   const release: (() => void)[] = [];
-  const create = vi
-    .spyOn(storage, "createFile")
-    .mockImplementation(async (input) => {
-      active++;
-      peak = Math.max(peak, active);
-      await new Promise<void>((resolve) => release.push(resolve));
-      active--;
-      return {
-        ...input.metadata,
-        fileId: input.metadata.assetId,
-        version: "1",
-        modifiedTime: "now",
-        size: 1,
-        tagIds: [],
-        description: "",
-      } as StoredFile;
-    });
+  const create = vi.spyOn(storage, "createFile").mockImplementation(async (input) => {
+    active++;
+    peak = Math.max(peak, active);
+    await new Promise<void>((resolve) => release.push(resolve));
+    active--;
+    return {
+      ...input.metadata,
+      fileId: input.metadata.assetId,
+      version: "1",
+      modifiedTime: "now",
+      size: 1,
+      tagIds: [],
+      description: "",
+    } as StoredFile;
+  });
   const work = service.startOperation(
     "tile-split",
     Array.from({ length: 7 }, (_, i) => ({

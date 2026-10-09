@@ -35,6 +35,7 @@
 アプリを一般公開する設定やOAuthの審査申請は、この個人用構成には含めません。
 
 公式資料:
+
 - [クライアント ID の取得](https://developers.google.com/identity/oauth2/web/guides/get-google-api-clientid)
 - [GISトークンモデル](https://developers.google.com/identity/oauth2/web/guides/use-token-model)
 - [Driveアップロード](https://developers.google.com/workspace/drive/api/guides/manage-uploads)

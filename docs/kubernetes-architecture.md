@@ -45,15 +45,15 @@ YugabyteDBには新規データベース `asset_manager`、所有者 `asset_mana
 
 ## API
 
-|メソッド・パス（/asset-manager/api 以下）|用途|
-|---|---|
-|GET assets?after=UUID|メタデータ一覧、500件ずつ|
-|GET assets/:id|メタデータ|
-|GET assets/:id/content|本体をS3からストリーム配信|
-|PUT assets/:id/content|multipart metadata→file、作成・本体更新|
-|PATCH assets/:id|名前・タグ・説明の更新|
-|DELETE assets/:id|参照を許容して削除|
-|GET tags / POST tags|タグ一覧・作成|
+| メソッド・パス（/asset-manager/api 以下） | 用途                                    |
+| ----------------------------------------- | --------------------------------------- |
+| GET assets?after=UUID                     | メタデータ一覧、500件ずつ               |
+| GET assets/:id                            | メタデータ                              |
+| GET assets/:id/content                    | 本体をS3からストリーム配信              |
+| PUT assets/:id/content                    | multipart metadata→file、作成・本体更新 |
+| PATCH assets/:id                          | 名前・タグ・説明の更新                  |
+| DELETE assets/:id                         | 参照を許容して削除                      |
+| GET tags / POST tags                      | タグ一覧・作成                          |
 
 更新と削除にはIf-Matchでversionを送る。競合時409、バージョン未指定428、未発見404、サイズ超過413、保存先障害503。クライアントは操作ジャーナルの完了ファイルを再送しない。新規作成の再送は同じID・SHA-256・名前が一致すると既存結果を返す。
 

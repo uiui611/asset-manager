@@ -14,37 +14,40 @@ metadata:
 spec:
   replicas: 1
   selector:
-    matchLabels: {app: asset-manager}
+    matchLabels: { app: asset-manager }
   template:
     metadata:
-      labels: {app: asset-manager}
+      labels: { app: asset-manager }
     spec:
       automountServiceAccountToken: false
-      securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001}
+      securityContext: { runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001 }
       containers:
         - name: app
           image: ghcr.io/uiui611/asset-manager:main
           imagePullPolicy: Always
-          ports: [{name: http, containerPort: 8080}]
+          ports: [{ name: http, containerPort: 8080 }]
           env:
-            - {name: APP_BASE_PATH, value: /asset-manager}
-            - {name: ALLOWED_ORIGINS, value: 'https://ubuntu.home.arpa,https://private.mizu-mizu.info,https://mizu-mizu.info,https://*.mizu-mizu.info'}
-            - {name: STATIC_DIR, value: /app/dist}
-            - {name: S3_BUCKET, value: assets}
-            - {name: S3_ENDPOINT, value: 'http://rustfs.default.svc.cluster.local:9000'}
+            - { name: APP_BASE_PATH, value: /asset-manager }
+            - {
+                name: ALLOWED_ORIGINS,
+                value: "https://ubuntu.home.arpa,https://private.mizu-mizu.info,https://mizu-mizu.info,https://*.mizu-mizu.info",
+              }
+            - { name: STATIC_DIR, value: /app/dist }
+            - { name: S3_BUCKET, value: assets }
+            - { name: S3_ENDPOINT, value: "http://rustfs.default.svc.cluster.local:9000" }
           envFrom:
-            - secretRef: {name: asset-manager-credentials}
+            - secretRef: { name: asset-manager-credentials }
           resources:
-            requests: {cpu: 100m, memory: 128Mi}
-            limits: {cpu: '1', memory: 384Mi}
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: "1", memory: 384Mi }
           readinessProbe:
-            httpGet: {path: /asset-manager/readyz, port: http}
+            httpGet: { path: /asset-manager/readyz, port: http }
           livenessProbe:
-            httpGet: {path: /asset-manager/healthz, port: http}
+            httpGet: { path: /asset-manager/healthz, port: http }
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
-            capabilities: {drop: [ALL]}
+            capabilities: { drop: [ALL] }
 ---
 apiVersion: v1
 kind: Service
@@ -53,14 +56,6 @@ metadata:
   namespace: default
 spec:
   type: NodePort
-  selector: {app: asset-manager}
+  selector: { app: asset-manager }
   ports:
-    - {name: http, port: 8080, targetPort: http, nodePort: 30820}
-
-
-
-
-
-
-
-
+    - { name: http, port: 8080, targetPort: http, nodePort: 30820 }

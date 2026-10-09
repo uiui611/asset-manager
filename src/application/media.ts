@@ -6,10 +6,9 @@ export function workerJob<T>(
   options?: SplitOptions,
 ): Promise<T> {
   return new Promise((resolve, reject) => {
-    const worker = new Worker(
-      new URL("../workers/media.worker.ts", import.meta.url),
-      { type: "module" },
-    );
+    const worker = new Worker(new URL("../workers/media.worker.ts", import.meta.url), {
+      type: "module",
+    });
     worker.onmessage = (e) => {
       worker.terminate();
       if (e.data.error) reject(new Error(e.data.error));
@@ -24,8 +23,7 @@ export function workerJob<T>(
 }
 export const hashBlob = (blob: Blob) => workerJob<string>("hash", blob);
 export async function split(blob: Blob, options: SplitOptions) {
-  if (blob.type === "image/svg+xml")
-    throw new Error("SVGはタイル分割できません。");
+  if (blob.type === "image/svg+xml") throw new Error("SVGはタイル分割できません。");
   return typeof OffscreenCanvas !== "undefined"
     ? workerJob<{ name: string; blob: Blob }[]>("split", blob, options)
     : splitImage(blob, options);
@@ -34,8 +32,7 @@ export async function validateImport(
   file: File,
 ): Promise<{ blob: Blob; type: "image" | "audio" | "json" }> {
   if (file.name.toLowerCase().endsWith(".json")) {
-    if (file.size > 50_000_000)
-      throw new Error("JSONは50 MB以下にしてください。");
+    if (file.size > 50_000_000) throw new Error("JSONは50 MB以下にしてください。");
     JSON.parse(await file.text());
     return {
       blob: new Blob([file], { type: "application/json" }),
@@ -56,9 +53,7 @@ export async function validateImport(
   if (file.type.startsWith("audio/")) {
     const audio = new Audio();
     if (!audio.canPlayType(file.type))
-      throw new Error(
-        `${file.name}: このブラウザで対応していない音声形式です。`,
-      );
+      throw new Error(`${file.name}: このブラウザで対応していない音声形式です。`);
     const url = URL.createObjectURL(file);
     try {
       await new Promise<void>((resolve, reject) => {

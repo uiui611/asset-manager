@@ -17,14 +17,11 @@ export function peaks(samples: Float32Array | number[], bins = 160) {
     const start = Math.floor((i * samples.length) / bins),
       end = Math.floor(((i + 1) * samples.length) / bins);
     let peak = 0;
-    for (let j = start; j < end; j++)
-      peak = Math.max(peak, Math.abs(samples[j]));
+    for (let j = start; j < end; j++) peak = Math.max(peak, Math.abs(samples[j]));
     return peak;
   });
 }
-export async function playPreset(
-  parameters: Record<string, number | string | boolean>,
-) {
+export async function playPreset(parameters: Record<string, number | string | boolean>) {
   if (!hasWebAudio())
     throw new Error(
       "このブラウザ環境ではWeb Audioを利用できません。効果音の編集・JSON保存は利用できます。",
@@ -84,9 +81,7 @@ export async function audioWaveform(file: StoredFile, blob: Blob) {
   }
 }
 
-export function renderWav(
-  parameters: Record<string, number | string | boolean>,
-) {
+export function renderWav(parameters: Record<string, number | string | boolean>) {
   const samples = new jsfxr.SoundEffect({
     ...parameters,
     sample_rate: 44100,
@@ -98,8 +93,7 @@ export function samplesToWav(samples: number[] | Float32Array) {
   const buffer = new ArrayBuffer(44 + samples.length * 2),
     view = new DataView(buffer);
   const text = (offset: number, value: string) => {
-    for (let i = 0; i < value.length; i++)
-      view.setUint8(offset + i, value.charCodeAt(i));
+    for (let i = 0; i < value.length; i++) view.setUint8(offset + i, value.charCodeAt(i));
   };
   text(0, "RIFF");
   view.setUint32(4, 36 + samples.length * 2, true);
@@ -126,10 +120,7 @@ export function renderTrack(track: SoundTrack): Float32Array {
     new jsfxr.SoundEffect({
       ...track.parameters,
       sample_rate: 44100,
-      sound_vol: Math.min(
-        0.5,
-        Math.max(0, Number(track.parameters.sound_vol ?? 0.2)),
-      ),
+      sound_vol: Math.min(0.5, Math.max(0, Number(track.parameters.sound_vol ?? 0.2))),
     }).getRawBuffer().normalized,
   ).slice(0, 44100 * 20);
 }
@@ -143,15 +134,11 @@ export function mixSamples(
   }[],
 ) {
   const active = tracks.filter((t) => !t.muted);
-  const length = Math.max(
-    1,
-    ...active.map((t) => t.samples.length + Math.round(t.offset * 44100)),
-  );
+  const length = Math.max(1, ...active.map((t) => t.samples.length + Math.round(t.offset * 44100)));
   const mixed = new Float32Array(length);
   for (const t of active) {
     const offset = Math.round(t.offset * 44100);
-    for (let i = 0; i < t.samples.length; i++)
-      mixed[offset + i] += t.samples[i] * t.gain;
+    for (let i = 0; i < t.samples.length; i++) mixed[offset + i] += t.samples[i] * t.gain;
   }
   let maximum = 1;
   for (const v of mixed) maximum = Math.max(maximum, Math.abs(v));
@@ -160,9 +147,7 @@ export function mixSamples(
 }
 export function renderMix(preset: SoundPreset) {
   validateProject("sound", preset);
-  return mixSamples(
-    preset.tracks.map((t) => ({ ...t, samples: renderTrack(t) })),
-  );
+  return mixSamples(preset.tracks.map((t) => ({ ...t, samples: renderTrack(t) })));
 }
 export async function playSamples(samples: Float32Array) {
   if (!hasWebAudio()) throw new Error("この環境では音声を再生できません。");

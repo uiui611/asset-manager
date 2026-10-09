@@ -21,12 +21,8 @@ it("combines equal-sized cells without scaling and rejects mismatched dimensions
       2,
     ),
   ).toThrow("一致");
-  expect(() => tileSheetLayout([{ width: 4096, height: 4096 }], 2)).toThrow(
-    "4096",
-  );
-  expect(() => tileSheetLayout([{ width: 16, height: 16 }], 1.5)).toThrow(
-    "整数",
-  );
+  expect(() => tileSheetLayout([{ width: 4096, height: 4096 }], 2)).toThrow("4096");
+  expect(() => tileSheetLayout([{ width: 16, height: 16 }], 1.5)).toThrow("整数");
 });
 it("validates per-layer sheet references while allowing missing source assets", () => {
   const map: MapProject = {

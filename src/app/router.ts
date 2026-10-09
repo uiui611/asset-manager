@@ -1,11 +1,4 @@
-export const pages = [
-  "assets",
-  "maps",
-  "characters",
-  "sounds",
-  "sprites",
-  "settings",
-] as const;
+export const pages = ["assets", "maps", "characters", "sounds", "sprites", "settings"] as const;
 export type Page = (typeof pages)[number];
 export function currentPage(): Page {
   const page = location.hash.slice(1).split("?")[0];

@@ -7,10 +7,7 @@ export default defineConfig(({ mode }) => ({
       name: "development-csp",
       apply: "serve",
       transformIndexHtml: (html) =>
-        html.replace(
-          "connect-src 'self'",
-          "connect-src 'self' ws://localhost:* ws://127.0.0.1:*",
-        ),
+        html.replace("connect-src 'self'", "connect-src 'self' ws://localhost:* ws://127.0.0.1:*"),
     },
   ],
   base: "./",
@@ -29,13 +26,7 @@ export default defineConfig(({ mode }) => ({
     port: 5173,
     strictPort: true,
     fs: {
-      deny: [
-        ".env",
-        ".env.*",
-        "*.{crt,pem}",
-        "**/.git/**",
-        "**/googleaccountid.txt",
-      ],
+      deny: [".env", ".env.*", "*.{crt,pem}", "**/.git/**", "**/googleaccountid.txt"],
     },
   },
   build: { target: "es2022" },

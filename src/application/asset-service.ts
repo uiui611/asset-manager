@@ -2,11 +2,7 @@ import { sanitizeSvg, thumbnail } from "../canvas/images";
 import { db } from "../database/db";
 import { editorKind } from "../domain/library";
 import { imageMime } from "../domain/media-type";
-import {
-  encodeProperties,
-  referenceIds,
-  validateWriteSize,
-} from "../domain/metadata";
+import { encodeProperties, referenceIds, validateWriteSize } from "../domain/metadata";
 import {
   type JournalItem,
   type Kind,
@@ -128,12 +124,9 @@ export class AssetService extends EventTarget {
     this.changed();
   }
   requireConnected() {
-    if (!storage.connected)
-      throw new Error("ストレージ に接続してから保存してください。");
+    if (!storage.connected) throw new Error("ストレージ に接続してから保存してください。");
     if (!navigator.onLine)
-      throw new Error(
-        "オフラインです。画面を閉じず、接続後に保存してください。",
-      );
+      throw new Error("オフラインです。画面を閉じず、接続後に保存してください。");
   }
   async connect() {
     await this.run(async () => {
@@ -268,12 +261,7 @@ export class AssetService extends EventTarget {
     await db.operationJournal.put(journal);
     const progress = {
       id,
-      label:
-        journal.type === "bulk-trash"
-          ? "削除"
-          : journal.type === "bulk-tag"
-            ? "更新"
-            : "保存",
+      label: journal.type === "bulk-trash" ? "削除" : journal.type === "bulk-tag" ? "更新" : "保存",
       done: journal.completedItems.length,
       total: journal.completedItems.length + journal.pendingItems.length,
     };
@@ -283,26 +271,18 @@ export class AssetService extends EventTarget {
     let failed: unknown;
     let persist = Promise.resolve();
     const limiter =
-      journal.type === "bulk-trash" || journal.type === "bulk-tag"
-        ? this.deletes
-        : this.writes;
+      journal.type === "bulk-trash" || journal.type === "bulk-tag" ? this.deletes : this.writes;
     try {
       await Promise.all(
         Array.from(
           {
             length: Math.min(
-              journal.type === "bulk-trash" || journal.type === "bulk-tag"
-                ? 4
-                : 2,
+              journal.type === "bulk-trash" || journal.type === "bulk-tag" ? 4 : 2,
               queue.length,
             ),
           },
           async () => {
-            while (
-              queue.length &&
-              cancellation === this.cancellation &&
-              !failed
-            ) {
+            while (queue.length && cancellation === this.cancellation && !failed) {
               const itemId = queue.shift();
               const item = journal.items.find((i) => i.id === itemId);
               if (!item) {
@@ -319,8 +299,7 @@ export class AssetService extends EventTarget {
                         cached?.version || item.metadata?.version,
                       );
                     } catch (e) {
-                      if (!(e instanceof Error) || !e.message.includes("(404)"))
-                        throw e;
+                      if (!(e instanceof Error) || !e.message.includes("(404)")) throw e;
                     }
                     await db.assets.delete(item.id);
                     if (item.fileId) await db.fileMap.delete(item.fileId);
@@ -352,9 +331,7 @@ export class AssetService extends EventTarget {
                   }
                 });
                 journal.completedItems.push(item.id);
-                journal.pendingItems = journal.pendingItems.filter(
-                  (i) => i !== item.id,
-                );
+                journal.pendingItems = journal.pendingItems.filter((i) => i !== item.id);
                 item.blob = undefined;
                 item.bytes = undefined;
                 // Serialize journal checkpoints while independent network requests overlap.
@@ -369,11 +346,7 @@ export class AssetService extends EventTarget {
           },
         ),
       );
-      journal.status = failed
-        ? "failed"
-        : journal.pendingItems.length
-          ? "pending"
-          : "completed";
+      journal.status = failed ? "failed" : journal.pendingItems.length ? "pending" : "completed";
       journal.error = failed
         ? failed instanceof Error
           ? failed.message
@@ -387,12 +360,7 @@ export class AssetService extends EventTarget {
       this.changed();
     }
   }
-  async update(
-    file: StoredFile,
-    name: string,
-    description: string,
-    tagIds: string[],
-  ) {
+  async update(file: StoredFile, name: string, description: string, tagIds: string[]) {
     this.requireConnected();
     if (!name.trim()) throw new Error("素材名を入力してください。");
     await this.putFile(
@@ -406,9 +374,7 @@ export class AssetService extends EventTarget {
   async blob(file: StoredFile) {
     const blob = await storage.getFile(file.fileId);
     const mime =
-      file.type === "image"
-        ? await imageMime(blob, file.mimeType)
-        : blob.type || file.mimeType;
+      file.type === "image" ? await imageMime(blob, file.mimeType) : blob.type || file.mimeType;
     return mime === "image/svg+xml"
       ? sanitizeSvg(await blob.text())
       : blob.type === mime
@@ -421,9 +387,7 @@ export class AssetService extends EventTarget {
       if (cached?.version === file.version)
         return (
           cached.blob ||
-          (cached.bytes
-            ? new Blob([cached.bytes], { type: "image/png" })
-            : undefined)
+          (cached.bytes ? new Blob([cached.bytes], { type: "image/png" }) : undefined)
         );
       if (!storage.connected) return undefined;
       let blob: Blob;
@@ -436,11 +400,7 @@ export class AssetService extends EventTarget {
         )
           return undefined;
         blob = new Blob(
-          [
-            Uint8Array.from(atob(data.previewImage.split(",")[1]), (c) =>
-              c.charCodeAt(0),
-            ),
-          ],
+          [Uint8Array.from(atob(data.previewImage.split(",")[1]), (c) => c.charCodeAt(0))],
           { type: "image/png" },
         );
       } else blob = await thumbnail(await this.blob(file));
@@ -452,10 +412,7 @@ export class AssetService extends EventTarget {
       try {
         await db.thumbnails.put(cache);
       } catch (error) {
-        if (
-          !(error instanceof Error) ||
-          !["UnknownError", "DataCloneError"].includes(error.name)
-        )
+        if (!(error instanceof Error) || !["UnknownError", "DataCloneError"].includes(error.name))
           throw error;
         await db.thumbnails.put({
           ...cache,
@@ -473,15 +430,8 @@ export class AssetService extends EventTarget {
     const existing = this.files.find((f) => f.assetId === project.id);
     let stored: StoredFile;
     if (existing) {
-      stored = await storage.updateContent(
-        existing.fileId,
-        content,
-        version || existing.version,
-      );
-      if (
-        stored.name !== `${project.name}.json` ||
-        !stored.tagIds.includes(`editor-${kind}`)
-      )
+      stored = await storage.updateContent(existing.fileId, content, version || existing.version);
+      if (stored.name !== `${project.name}.json` || !stored.tagIds.includes(`editor-${kind}`))
         stored = await storage.updateMetadata(
           stored.fileId,
           {
@@ -513,9 +463,7 @@ export class AssetService extends EventTarget {
   }
   async references(ids: string[]) {
     const found: string[] = [];
-    for (const f of this.files.filter((f) =>
-      ["map", "character"].includes(editorKind(f) || ""),
-    )) {
+    for (const f of this.files.filter((f) => ["map", "character"].includes(editorKind(f) || ""))) {
       try {
         const p = await this.openProject(f);
         if (referenceIds(p).some((id) => ids.includes(id))) found.push(f.name);
@@ -533,8 +481,7 @@ export class AssetService extends EventTarget {
         try {
           const p = await this.openProject(f);
           for (const id of referenceIds(p))
-            if (!ids.has(id))
-              issues.push(`${f.name}: 素材 ${id} が見つかりません`);
+            if (!ids.has(id)) issues.push(`${f.name}: 素材 ${id} が見つかりません`);
         } catch (e) {
           issues.push(`${f.name}: ${String(e)}`);
         }
