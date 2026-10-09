@@ -17,6 +17,7 @@ use sha2::{Digest, Sha256};
 use std::{env, sync::Arc};
 use tokio::io::AsyncWriteExt;
 use tower_http::services::{ServeDir, ServeFile};
+use url::Url;
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -126,6 +127,64 @@ fn normalize(mut v: Value) -> Result<Value> {
     v = json!({"name":name,"type":kind,"mimeType":mime,"tagIds":tags,"description":desc});
     Ok(v)
 }
+fn valid_origin_url(origin: &str) -> Option<Url> {
+    let url = Url::parse(origin).ok()?;
+    if !matches!(url.scheme(), "http" | "https")
+        || url.host_str().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.path() != "/"
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return None;
+    }
+    Some(url)
+}
+
+fn origin_is_allowed(origin: &str, allowed_origins: &[String]) -> bool {
+    let Some(origin_url) = valid_origin_url(origin) else {
+        return false;
+    };
+    let serialized_origin = origin_url.origin().ascii_serialization();
+
+    allowed_origins.iter().any(|allowed| {
+        if let Some((scheme, domain)) = allowed.split_once("://*.") {
+            if scheme != "https"
+                || origin_url.scheme() != scheme
+                || domain.is_empty()
+                || domain.chars().any(|c| "/:@*".contains(c))
+                || origin_url.port().is_some()
+            {
+                return false;
+            }
+            let suffix = format!(".{}", domain.to_ascii_lowercase());
+            return origin_url
+                .host_str()
+                .and_then(|host| host.strip_suffix(&suffix))
+                .is_some_and(|subdomain| !subdomain.is_empty());
+        }
+
+        valid_origin_url(allowed).is_some_and(|allowed_url| {
+            allowed_url.origin().ascii_serialization() == serialized_origin
+        })
+    })
+}
+
+fn configured_origins() -> Vec<String> {
+    let configured = env::var("ALLOWED_ORIGINS")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| env::var("PUBLIC_ORIGIN").ok())
+        .unwrap_or_else(|| "http://127.0.0.1:8080".into());
+    configured
+        .split(',')
+        .map(str::trim)
+        .filter(|origin| !origin.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
 async fn same_origin(req: Request, next: Next) -> Response {
     if !matches!(
         *req.method(),
@@ -139,9 +198,7 @@ async fn same_origin(req: Request, next: Next) -> Response {
             return StatusCode::FORBIDDEN.into_response();
         }
         if let Some(origin) = req.headers().get("origin").and_then(|s| s.to_str().ok()) {
-            let allowed =
-                env::var("PUBLIC_ORIGIN").unwrap_or_else(|_| "http://127.0.0.1:8080".into());
-            if origin != allowed {
+            if !origin_is_allowed(origin, &configured_origins()) {
                 return StatusCode::FORBIDDEN.into_response();
             }
         }

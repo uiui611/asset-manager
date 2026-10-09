@@ -4,7 +4,7 @@
 
 ## 利用範囲
 
-個人専用・プライベートLAN内、アプリログインなし。Nginx HTTPS公開パスは `/asset-manager/`。外部公開やルーター設定変更は行わない。OriginとFetch Metadataによる異なるサイトからの書き込み拒否を行い、S3資格情報をブラウザへ渡さない。
+個人専用・プライベートLAN内、アプリログインなし。Nginx HTTPS公開パスは `/asset-manager/`。外部公開やルーター設定変更は行わない。OriginとFetch Metadataによる異なるサイトからの書き込み拒否を行い、S3資格情報をブラウザへ渡さない。`ALLOWED_ORIGINS` は許可するOriginをカンマ区切りで指定し、完全一致と `https://*.example.com` 形式のサブドメインパターンを利用できる。未設定時は従来の `PUBLIC_ORIGIN` を使う。
 
 ```mermaid
 flowchart LR
