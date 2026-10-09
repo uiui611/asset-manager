@@ -32,7 +32,7 @@ Lit + TypeScript の画面と最小限のRust API（Axum）を単一コンテナ
 
 ## 開発・検証
 
-整形は Oxfmt のデフォルト設定を使います。un run format で整形し、un run format:check で確認します。Biome は lint と import 整理に使用します。
+整形は Oxfmt のデフォルト設定を使います。`bun run format` で整形し、`bun run format:check` で確認します。Biome は lint と import 整理に使用します。
 
 ```powershell
 bun install --frozen-lockfile
