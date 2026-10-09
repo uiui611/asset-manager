@@ -27,6 +27,7 @@ dependencies = [
  "tokio-postgres",
  "tower",
  "tower-http",
+ "url",
  "uuid",
 ]
 

@@ -28,7 +28,7 @@ spec:
           ports: [{name: http, containerPort: 8080}]
           env:
             - {name: APP_BASE_PATH, value: /asset-manager}
-            - {name: PUBLIC_ORIGIN, value: 'https://ubuntu.home.arpa'}
+            - {name: ALLOWED_ORIGINS, value: 'https://ubuntu.home.arpa,https://private.mizu-mizu.info,https://mizu-mizu.info,https://*.mizu-mizu.info'}
             - {name: STATIC_DIR, value: /app/dist}
             - {name: S3_BUCKET, value: assets}
             - {name: S3_ENDPOINT, value: 'http://rustfs.default.svc.cluster.local:9000'}
@@ -56,7 +56,6 @@ spec:
   selector: {app: asset-manager}
   ports:
     - {name: http, port: 8080, targetPort: http, nodePort: 30820}
-
 
 
 
