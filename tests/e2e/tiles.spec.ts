@@ -215,8 +215,9 @@ test("automatic sound preview is debounced and stop cancels pending playback", a
   await page.getByLabel("効果音名", { exact: true }).fill("silent name");
   expect(await count()).toBe(0);
   // Hold the debounce timer while browser actions run, even on slow CI hosts.
-  await page.clock.install();
-  await page.clock.pauseAt(new Date());
+  const clockStart = new Date();
+  await page.clock.install({ time: clockStart });
+  await page.clock.pauseAt(new Date(clockStart.getTime() + 60_000));
   const slider = page.locator(".knobs input[type=range]").first();
   await slider.evaluate((el) => {
     const input = el as HTMLInputElement;
