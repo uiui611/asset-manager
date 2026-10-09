@@ -7,7 +7,8 @@ process.env.PLAYWRIGHT_BROWSERS_PATH = new URL(
 export default defineConfig({
   testDir: "tests/e2e",
   fullyParallel: true,
-  workers: 3,
+  // Avoid competing WebKit page launches on the shared CI runner.
+  workers: process.env.CI ? 1 : 3,
   timeout: 30000,
   use: {
     baseURL: "http://localhost:5174",

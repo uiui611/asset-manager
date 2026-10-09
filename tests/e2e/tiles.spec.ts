@@ -214,6 +214,10 @@ test("automatic sound preview is debounced and stop cancels pending playback", a
     page.evaluate(() => Reflect.get(window, "previewStarts") as number);
   await page.getByLabel("効果音名", { exact: true }).fill("silent name");
   expect(await count()).toBe(0);
+  // Hold the debounce timer while browser actions run, even on slow CI hosts.
+  const clockStart = new Date();
+  await page.clock.install({ time: clockStart });
+  await page.clock.pauseAt(new Date(clockStart.getTime() + 60_000));
   const slider = page.locator(".knobs input[type=range]").first();
   await slider.evaluate((el) => {
     const input = el as HTMLInputElement;
@@ -223,13 +227,16 @@ test("automatic sound preview is debounced and stop cancels pending playback", a
     }
   });
   expect(await count()).toBe(0);
-  await expect.poll(count).toBe(1);
+  await page.clock.runFor(349);
+  expect(await count()).toBe(0);
+  await page.clock.runFor(1);
+  expect(await count()).toBe(1);
   await slider.evaluate((el) => {
     (el as HTMLInputElement).value = "0.4";
     el.dispatchEvent(new Event("input", { bubbles: true }));
   });
   await page.getByRole("button", { name: "停止", exact: true }).click();
-  await page.waitForTimeout(500);
+  await page.clock.runFor(500);
   expect(await count()).toBe(1);
   const order = await page.locator(".toolbar button").allTextContents();
   expect(order.map((s) => s.trim()).slice(-2)).toEqual([
