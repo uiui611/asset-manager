@@ -31,8 +31,6 @@ describe("media format identification", () => {
         }),
       ),
     ).toBe("image/svg+xml");
-    expect(
-      await imageMime(new Blob(["<html>no image</html>"])),
-    ).toBeUndefined();
+    expect(await imageMime(new Blob(["<html>no image</html>"]))).toBeUndefined();
   });
 });

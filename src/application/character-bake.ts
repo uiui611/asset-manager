@@ -1,11 +1,7 @@
 import { loadImage } from "../canvas/images";
 import { drawCharacter } from "../canvas/renderers";
 import { validateWriteSize } from "../domain/metadata";
-import type {
-  CharacterComposition,
-  CharacterLayer,
-  StoredFile,
-} from "../domain/models";
+import type { CharacterComposition, CharacterLayer, StoredFile } from "../domain/models";
 import { validateProject } from "../schemas/projects";
 import { app, storage } from "./asset-service";
 import { hashBlob } from "./media";
@@ -42,16 +38,10 @@ export async function prepareCharacterLayers(
       file = files[i],
       metadata = await storage.getMetadata(file.fileId);
     if (metadata.version !== file.version)
-      throw new Error(
-        `${file.name} は更新されています。一覧を更新してから再実行してください。`,
-      );
+      throw new Error(`${file.name} は更新されています。一覧を更新してから再実行してください。`);
     const image = await loadImage(await app.blob(file)),
       canvas = document.createElement("canvas");
-    drawCharacter(
-      canvas,
-      { ...project, layers: [{ ...layer, visible: true }] },
-      () => image,
-    );
+    drawCharacter(canvas, { ...project, layers: [{ ...layer, visible: true }] }, () => image);
     const blob = await new Promise<Blob>((resolve, reject) =>
       canvas.toBlob(
         (b) => (b ? resolve(b) : reject(new Error("PNGを作成できません。"))),
@@ -74,19 +64,13 @@ export async function prepareCharacterLayers(
 }
 export async function overwriteBakedLayer(item: BakedLayer) {
   try {
-    return await storage.updateContent(
-      item.file.fileId,
-      item.blob,
-      item.file.version,
-      { name: item.name },
-    );
+    return await storage.updateContent(item.file.fileId, item.blob, item.file.version, {
+      name: item.name,
+    });
   } catch (error) {
     // A lost response can follow a successful write. Recover only an exact content match.
-    const current = await storage
-      .getMetadata(item.file.fileId)
-      .catch(() => undefined);
-    if (current?.sha256 === item.sha256 && current.name === item.name)
-      return current;
+    const current = await storage.getMetadata(item.file.fileId).catch(() => undefined);
+    if (current?.sha256 === item.sha256 && current.name === item.name) return current;
     throw error;
   }
 }

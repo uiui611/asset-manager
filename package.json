@@ -1,19 +1,20 @@
 {
   "name": "game-asset-manager",
-  "private": true,
   "version": "0.1.0",
+  "private": true,
   "type": "module",
-  "packageManager": "bun@1.4.2",
   "scripts": {
     "schemas": "bun scripts/generate-schemas.ts",
     "dev": "bun run schemas && vite --host 127.0.0.1",
     "build": "bun run schemas && tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "check": "biome check . && tsc --noEmit",
-    "check:fix": "biome check --write .",
-    "check:ci": "biome ci . && tsc --noEmit",
+    "check": "bun run format:check && biome check . && tsc --noEmit",
+    "check:fix": "biome check --write . && bun run format",
+    "check:ci": "bun run format:check && biome ci . && tsc --noEmit",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check"
   },
   "dependencies": {
     "ajv": "^8.20.0",
@@ -27,8 +28,10 @@
     "@playwright/test": "1.63.0",
     "@types/node": "26.6.2",
     "fake-indexeddb": "6.2.5",
+    "oxfmt": "0.72.0",
     "typescript": "7.0.2",
     "vite": "8.3.0",
     "vitest": "5.0.1"
-  }
+  },
+  "packageManager": "bun@1.4.2"
 }

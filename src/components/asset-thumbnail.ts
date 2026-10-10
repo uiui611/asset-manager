@@ -3,8 +3,24 @@ import { app } from "../application/asset-service";
 import type { StoredFile } from "../domain/models";
 export class AssetThumbnail extends LitElement {
   static properties = { file: { attribute: false }, url: { state: true } };
-  static styles =
-    css`:host{display:inline-flex;width:42px;height:42px;flex-shrink:0;background:#edf1e6;border-radius:4px;align-items:center;justify-content:center}img{max-width:100%;max-height:100%;object-fit:contain;image-rendering:pixelated}`;
+  static styles = css`
+    :host {
+      display: inline-flex;
+      width: 42px;
+      height: 42px;
+      flex-shrink: 0;
+      background: #edf1e6;
+      border-radius: 4px;
+      align-items: center;
+      justify-content: center;
+    }
+    img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      image-rendering: pixelated;
+    }
+  `;
   file!: StoredFile;
   url = "";
   private generation = 0;
@@ -30,7 +46,7 @@ export class AssetThumbnail extends LitElement {
   }
   render() {
     return this.url
-      ? html`<img src=${this.url} alt=${this.file.name}>`
+      ? html`<img src=${this.url} alt=${this.file.name} />`
       : html`<span aria-label="画像">▧</span>`;
   }
 }

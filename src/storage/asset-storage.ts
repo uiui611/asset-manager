@@ -24,10 +24,6 @@ export interface AssetStorage {
     input: Partial<StoredFile>,
     expectedVersion?: string,
   ): Promise<StoredFile>;
-  updateContent(
-    fileId: string,
-    content: Blob,
-    expectedVersion?: string,
-  ): Promise<StoredFile>;
+  updateContent(fileId: string, content: Blob, expectedVersion?: string): Promise<StoredFile>;
   trashFile(fileId: string, expectedVersion?: string): Promise<void>;
 }

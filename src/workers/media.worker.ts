@@ -6,9 +6,7 @@ self.onmessage = async (event: MessageEvent) => {
     const result =
       type === "hash"
         ? Array.from(
-            new Uint8Array(
-              await crypto.subtle.digest("SHA-256", await blob.arrayBuffer()),
-            ),
+            new Uint8Array(await crypto.subtle.digest("SHA-256", await blob.arrayBuffer())),
           )
             .map((x) => x.toString(16).padStart(2, "0"))
             .join("")

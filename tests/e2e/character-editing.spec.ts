@@ -2,9 +2,7 @@ import { expect, type Page, test } from "@playwright/test";
 
 async function setup(page: Page) {
   await page.goto("/#characters");
-  await expect(
-    page.getByRole("heading", { name: "キャラクター合成", exact: true }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "キャラクター合成", exact: true })).toBeVisible();
   await page.evaluate(async () => {
     const { app, storage } = await import("/src/application/asset-service.ts");
     await app.init();
@@ -24,10 +22,7 @@ async function setup(page: Page) {
     type FileRecord = import("/src/domain/models.ts").StoredFile;
     const files = new Map<string, { file: FileRecord; blob: Blob }>();
     storage.createFile = async (input) => {
-      if (
-        input.content.type.includes("json") &&
-        Reflect.get(window, "failJson")
-      )
+      if (input.content.type.includes("json") && Reflect.get(window, "failJson"))
         throw new Error("JSON保存エラー");
       const file = {
         fileId: input.metadata.assetId,
@@ -56,8 +51,7 @@ async function setup(page: Page) {
     storage.updateContent = async (id, content, version, metadata = {}) => {
       const item = files.get(id);
       if (!item || item.file.version !== version) throw new Error("conflict");
-      if (Reflect.get(window, "failAsset") === id)
-        throw new Error("通信エラー");
+      if (Reflect.get(window, "failAsset") === id) throw new Error("通信エラー");
       const { hashBlob } = await import("/src/application/media.ts");
       const file = {
         ...item.file,
@@ -68,8 +62,7 @@ async function setup(page: Page) {
         sha256: await hashBlob(content),
       };
       files.set(id, { file, blob: content });
-      if (Reflect.get(window, "lostResponse") === id)
-        throw new Error("response lost");
+      if (Reflect.get(window, "lostResponse") === id) throw new Error("response lost");
       return file;
     };
     storage.updateMetadata = async (id, patch, version) => {
@@ -117,9 +110,7 @@ async function setup(page: Page) {
     await app.refresh();
   });
   await page.getByRole("button", { name: "base.png", exact: true }).click();
-  await page
-    .getByRole("button", { name: "ベース画像にする", exact: true })
-    .click();
+  await page.getByRole("button", { name: "ベース画像にする", exact: true }).click();
   await expect(page.locator("#editor-canvas")).toHaveAttribute("width", "100");
 }
 test("selected character layer drags in image coordinates with one undo and wheel zoom", async ({
@@ -144,33 +135,25 @@ test("selected character layer drags in image coordinates with one undo and whee
   await canvas.hover();
   await page.mouse.wheel(0, -100);
   await expect
-    .poll(async () =>
-      Number(await page.getByLabel("表示倍率", { exact: true }).inputValue()),
-    )
+    .poll(async () => Number(await page.getByLabel("表示倍率", { exact: true }).inputValue()))
     .toBeGreaterThan(2);
   await canvas.hover();
   await page.mouse.wheel(0, 200);
   await expect
-    .poll(async () =>
-      Number(await page.getByLabel("表示倍率", { exact: true }).inputValue()),
-    )
+    .poll(async () => Number(await page.getByLabel("表示倍率", { exact: true }).inputValue()))
     .toBeLessThan(2);
   await expect(page.getByLabel("X座標", { exact: true })).toHaveValue("20");
   const zoom = await page.getByLabel("表示倍率", { exact: true }).inputValue();
   await page.locator("asset-palette").hover();
   await page.mouse.wheel(0, 100);
   await page.waitForTimeout(100);
-  expect(await page.getByLabel("表示倍率", { exact: true }).inputValue()).toBe(
-    zoom,
-  );
+  expect(await page.getByLabel("表示倍率", { exact: true }).inputValue()).toBe(zoom);
 });
 
 async function prepareComposition(page: Page) {
   await setup(page);
   await page.getByRole("button", { name: "overlay.jpg", exact: true }).click();
-  await page
-    .getByRole("button", { name: "レイヤーに追加", exact: true })
-    .click();
+  await page.getByRole("button", { name: "レイヤーに追加", exact: true }).click();
   await page.locator("editor-page").evaluate(async (el) => {
     const editor = el as import("/src/pages/editor/editor-page.ts").EditorPage;
     if (!("canvas" in editor.project)) throw new Error("character");
@@ -197,9 +180,7 @@ async function prepareComposition(page: Page) {
     .poll(() =>
       page
         .locator("editor-page")
-        .evaluate(
-          (el) => (Reflect.get(el, "images") as Map<string, unknown>).size,
-        ),
+        .evaluate((el) => (Reflect.get(el, "images") as Map<string, unknown>).size),
     )
     .toBe(2);
 }
@@ -208,10 +189,7 @@ function visualDifference(a: number[], b: number[]) {
   for (let i = 0; i < a.length; i += 4) {
     max = Math.max(max, Math.abs(a[i + 3] - b[i + 3]));
     for (let c = 0; c < 3; c++)
-      max = Math.max(
-        max,
-        Math.abs((a[i + c] * a[i + 3]) / 255 - (b[i + c] * b[i + 3]) / 255),
-      );
+      max = Math.max(max, Math.abs((a[i + c] * a[i + 3]) / 255 - (b[i + c] * b[i + 3]) / 255));
   }
   return max;
 }
@@ -223,9 +201,7 @@ async function pixels(page: Page) {
   });
 }
 async function bake(page: Page) {
-  await page
-    .getByRole("button", { name: "元素材を切り出して上書き", exact: true })
-    .click();
+  await page.getByRole("button", { name: "元素材を切り出して上書き", exact: true }).click();
   await page
     .getByRole("dialog", { name: "元素材を切り出して上書き" })
     .getByRole("button", { name: "上書きして保存", exact: true })
@@ -238,20 +214,14 @@ test("baking overwrites source PNGs, normalizes and saves JSON, and preserves co
   const before = await pixels(page);
   await page.evaluate(() => Reflect.set(window, "lostResponse", "overlay"));
   await bake(page);
-  await expect(
-    page.getByText("2件の元素材とJSONを保存しました。", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByText("2件の元素材とJSONを保存しました。", { exact: true })).toBeVisible();
   await expect(page.getByRole("alert")).toHaveCount(0);
   const after = await pixels(page);
-  expect(
-    Math.max(...after.map((v, i) => Math.abs(v - before[i]))),
-  ).toBeLessThanOrEqual(2);
+  expect(Math.max(...after.map((v, i) => Math.abs(v - before[i])))).toBeLessThanOrEqual(2);
   await expect(page.getByLabel("X座標", { exact: true })).toHaveValue("0");
   await expect(page.getByLabel("横倍率", { exact: true })).toHaveValue("1");
   await expect(page.getByLabel("回転 (°)", { exact: true })).toHaveValue("0");
-  await expect(
-    page.getByRole("button", { name: "元に戻す", exact: true }),
-  ).toBeDisabled();
+  await expect(page.getByRole("button", { name: "元に戻す", exact: true })).toBeDisabled();
   const result = await page.evaluate(async () => {
     const { app, storage } = await import("/src/application/asset-service.ts");
     const file = app.files.find((f) => f.name === "baked.json");
@@ -285,9 +255,7 @@ test("baking overwrites source PNGs, normalizes and saves JSON, and preserves co
       ),
   ).toBe(true);
   await page.getByLabel("開く", { exact: true }).selectOption(result.id);
-  await expect(page.getByLabel("編集用JSON名", { exact: true })).toHaveValue(
-    "baked",
-  );
+  await expect(page.getByLabel("編集用JSON名", { exact: true })).toHaveValue("baked");
   expect(visualDifference(await pixels(page), before)).toBeLessThanOrEqual(2);
 });
 test("baking rejects duplicate or missing references without touching sources", async ({
@@ -302,8 +270,7 @@ test("baking rejects duplicate or missing references without touching sources", 
   await expect(page.getByRole("alert")).toContainText("同じ元素材");
   await page.locator("editor-page").evaluate((el) => {
     const editor = el as import("/src/pages/editor/editor-page.ts").EditorPage;
-    if ("canvas" in editor.project)
-      editor.project.layers[1].assetId = "missing";
+    if ("canvas" in editor.project) editor.project.layers[1].assetId = "missing";
   });
   await bake(page);
   await expect(page.getByRole("alert")).toContainText("見つからない素材");
@@ -328,9 +295,7 @@ test("partial overwrite failure saves normalized successes and retains failed la
     return app.openProject(file);
   });
   expect("layers" in data && "x" in data.layers[0] && data.layers[0].x).toBe(0);
-  expect("layers" in data && "x" in data.layers[1] && data.layers[1].x).toBe(
-    30,
-  );
+  expect("layers" in data && "x" in data.layers[1] && data.layers[1].x).toBe(30);
 });
 
 test("hidden layers are cropped without becoming visible and failed JSON save can be retried", async ({
@@ -346,17 +311,11 @@ test("hidden layers are cropped without becoming visible and failed JSON save ca
   const before = await pixels(page);
   await page.evaluate(() => Reflect.set(window, "failJson", true));
   await bake(page);
-  await expect(page.getByRole("alert")).toContainText(
-    "JSONを保存できませんでした",
-  );
+  await expect(page.getByRole("alert")).toContainText("JSONを保存できませんでした");
   await expect(page.getByLabel("X座標", { exact: true })).toHaveValue("0");
   expect(visualDifference(await pixels(page), before)).toBeLessThanOrEqual(2);
-  await page
-    .getByRole("button", { name: "素材ライブラリ", exact: false })
-    .click();
-  await expect(
-    page.getByRole("dialog", { name: "未保存の変更" }),
-  ).toBeVisible();
+  await page.getByRole("button", { name: "素材ライブラリ", exact: false }).click();
+  await expect(page.getByRole("dialog", { name: "未保存の変更" })).toBeVisible();
   await page.getByRole("button", { name: "キャンセル", exact: true }).click();
   await page.evaluate(() => Reflect.set(window, "failJson", false));
   await page.getByRole("button", { name: "保存する", exact: true }).click();
