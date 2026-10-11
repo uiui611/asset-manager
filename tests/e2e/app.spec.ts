@@ -7,16 +7,10 @@ test("unnamed editors guard navigation and new files without saving local drafts
   const name = page.getByLabel("編集用JSON名", { exact: true });
   await expect(name).toHaveValue("");
   await name.fill("森の入り口");
-  await page
-    .getByRole("button", { name: "レイヤーを追加", exact: true })
-    .click();
+  await page.getByRole("button", { name: "レイヤーを追加", exact: true }).click();
   await expect(page.getByText("未保存の変更", { exact: true })).toBeVisible();
-  await page
-    .getByRole("button", { name: "キャラクター合成", exact: true })
-    .click();
-  await expect(
-    page.getByRole("dialog", { name: "未保存の変更" }),
-  ).toBeVisible();
+  await page.getByRole("button", { name: "キャラクター合成", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "未保存の変更" })).toBeVisible();
   await page.getByRole("button", { name: "キャンセル", exact: true }).click();
   await expect(name).toHaveValue("森の入り口");
   await expect(page).toHaveURL(/#maps$/);
@@ -24,9 +18,7 @@ test("unnamed editors guard navigation and new files without saving local drafts
   await page.getByRole("button", { name: "変更を破棄", exact: true }).click();
   await expect(name).toHaveValue("");
   expect(
-    await page.evaluate(async () =>
-      (await import("/src/database/db.ts")).db.projects.count(),
-    ),
+    await page.evaluate(async () => (await import("/src/database/db.ts")).db.projects.count()),
   ).toBe(0);
   await expect(page.getByLabel("開く").locator("option")).toHaveCount(1);
   await page.getByRole("button", { name: "音楽・効果音", exact: true }).click();
@@ -34,12 +26,8 @@ test("unnamed editors guard navigation and new files without saving local drafts
   await expect(page.locator(".waveform i").first()).toBeVisible();
   const before = await page.locator(".waveform").innerHTML();
   await page.getByLabel("基本周波数", { exact: true }).fill("0.85");
-  await expect
-    .poll(() => page.locator(".waveform").innerHTML())
-    .not.toBe(before);
-  await page
-    .getByRole("button", { name: "トラックを追加", exact: true })
-    .click();
+  await expect.poll(() => page.locator(".waveform").innerHTML()).not.toBe(before);
+  await page.getByRole("button", { name: "トラックを追加", exact: true }).click();
   await expect(page.locator(".waveform")).toHaveCount(2);
   await page.getByRole("button", { name: "元に戻す", exact: true }).click();
   await expect(page.locator(".waveform")).toHaveCount(1);
@@ -91,13 +79,9 @@ test("SVG sanitization and worker tile processing", async ({ page }) => {
   expect(result.hash).toMatch(/^[a-f0-9]{64}$/);
   expect(result.tiles).toEqual([{ name: "test_0001.png", type: "image/png" }]);
 });
-test("10,000 item library virtualizes cards and filters locally", async ({
-  page,
-}) => {
+test("10,000 item library virtualizes cards and filters locally", async ({ page }) => {
   await page.goto("/");
-  await expect(
-    page.getByRole("heading", { name: "素材ライブラリ" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "素材ライブラリ" })).toBeVisible();
   await page.evaluate(async () => {
     const { app } = await import("/src/application/asset-service.ts");
     await app.init();
@@ -117,9 +101,7 @@ test("10,000 item library virtualizes cards and filters locally", async ({
     }));
     app.changed();
   });
-  await expect(
-    page.getByText("10,000 件の素材", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByText("10,000 件の素材", { exact: true })).toBeVisible();
   expect(await page.locator("asset-card").count()).toBeLessThan(50);
   await page.getByRole("textbox", { name: "素材を検索" }).fill("forest-09999");
   await expect(
@@ -129,12 +111,8 @@ test("10,000 item library virtualizes cards and filters locally", async ({
 test("settings validation and narrow layout", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/#settings");
-  await expect(
-    page.getByText("RustFS / assets バケット・YugabyteDB"),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "接続を確認・一覧を更新" }),
-  ).toBeEnabled();
+  await expect(page.getByText("RustFS / assets バケット・YugabyteDB")).toBeVisible();
+  await expect(page.getByRole("button", { name: "接続を確認・一覧を更新" })).toBeEnabled();
   const width = await page.evaluate(() => document.documentElement.scrollWidth);
   expect(width).toBeLessThanOrEqual(390);
 });

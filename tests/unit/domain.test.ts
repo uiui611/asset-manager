@@ -11,9 +11,7 @@ describe("asset metadata", () => {
     expect(() => validateWriteSize([1_000_000_000])).not.toThrow();
   });
   it("allows long tags without Drive byte limits", () => {
-    expect(() =>
-      encodeProperties({ tagIds: ["長いタグ".repeat(20)] }),
-    ).not.toThrow();
+    expect(() => encodeProperties({ tagIds: ["長いタグ".repeat(20)] })).not.toThrow();
     expect(() => encodeProperties({ tagIds: Array(51).fill("x") })).toThrow();
   });
 });

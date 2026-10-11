@@ -17,13 +17,7 @@ export class SyncService {
     } while (cursor);
     await this.db.transaction(
       "rw",
-      [
-        this.db.assets,
-        this.db.fileMap,
-        this.db.thumbnails,
-        this.db.waveforms,
-        this.db.syncState,
-      ],
+      [this.db.assets, this.db.fileMap, this.db.thumbnails, this.db.waveforms, this.db.syncState],
       async () => {
         const versions = new Map(files.map((f) => [f.assetId, f.version]));
         for (const old of await this.db.assets.toArray())
@@ -34,9 +28,7 @@ export class SyncService {
         await this.db.assets.clear();
         await this.db.assets.bulkPut(files);
         await this.db.fileMap.clear();
-        await this.db.fileMap.bulkPut(
-          files.map((f) => ({ fileId: f.fileId, assetId: f.assetId })),
-        );
+        await this.db.fileMap.bulkPut(files.map((f) => ({ fileId: f.fileId, assetId: f.assetId })));
         await this.db.syncState.put({
           key: "lastSync",
           value: new Date().toISOString(),

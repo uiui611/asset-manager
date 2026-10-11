@@ -7,9 +7,7 @@ export class HttpAssetStorage {
     const response = await fetch(this.base + path, options);
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
-      throw new Error(
-        body.error || `ストレージ要求に失敗しました (${response.status})`,
-      );
+      throw new Error(body.error || `ストレージ要求に失敗しました (${response.status})`);
     }
     return response;
   }
@@ -21,9 +19,7 @@ export class HttpAssetStorage {
     this.connected = false;
   }
   async listManagedFiles(cursor = ""): Promise<FilePage> {
-    return (
-      await this.request(`assets?after=${encodeURIComponent(cursor)}`)
-    ).json();
+    return (await this.request(`assets?after=${encodeURIComponent(cursor)}`)).json();
   }
   async getFile(id: string): Promise<Blob> {
     return (await this.request(`assets/${id}/content`)).blob();
@@ -58,12 +54,7 @@ export class HttpAssetStorage {
     metadata: Partial<StoredFile> = {},
   ): Promise<StoredFile> {
     const previous = await this.getMetadata(id);
-    return this.upload(
-      id,
-      content,
-      { ...previous, ...metadata },
-      version || previous.version,
-    );
+    return this.upload(id, content, { ...previous, ...metadata }, version || previous.version);
   }
   async updateMetadata(
     id: string,

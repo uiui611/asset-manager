@@ -2,9 +2,7 @@ import { expect, type Page, test } from "@playwright/test";
 
 async function seed(page: Page) {
   await page.goto("/");
-  await expect(
-    page.getByRole("heading", { name: "素材ライブラリ" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "素材ライブラリ" })).toBeVisible();
   await page.evaluate(async () => {
     const { app, storage } = await import("/src/application/asset-service.ts"),
       { db } = await import("/src/database/db.ts");
@@ -82,12 +80,8 @@ test("tile composition rejects mismatched sizes, preserves sources by default, a
   const dialog = page.getByRole("dialog", { name: "タイル合成" });
   await dialog.getByRole("button", { name: "red.png", exact: true }).click();
   await dialog.getByRole("button", { name: "wide.png", exact: true }).click();
-  await expect(dialog.getByRole("alert")).toContainText(
-    "画像サイズが一致しません",
-  );
-  await expect(
-    dialog.getByRole("button", { name: "合成画像を保存" }),
-  ).toBeDisabled();
+  await expect(dialog.getByRole("alert")).toContainText("画像サイズが一致しません");
+  await expect(dialog.getByRole("button", { name: "合成画像を保存" })).toBeDisabled();
   await dialog.getByRole("button", { name: /wide.png/ }).click();
   await dialog.getByRole("button", { name: "blue.png", exact: true }).click();
   await dialog.getByLabel("合成の列数").fill("2");
@@ -102,12 +96,8 @@ test("tile composition rejects mismatched sizes, preserves sources by default, a
     });
   await dialog.getByRole("button", { name: "合成画像を保存" }).click();
   await expect(dialog).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "red.png の詳細", exact: true }),
-  ).toBeVisible();
-  await page
-    .getByRole("button", { name: "マップエディター", exact: true })
-    .click();
+  await expect(page.getByRole("button", { name: "red.png の詳細", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "マップエディター", exact: true }).click();
   const palette = page.locator("asset-palette");
   await palette.getByLabel("パレットのタグ").selectOption("nature");
   await expect(palette.getByRole("button")).toHaveCount(1);
@@ -126,13 +116,9 @@ test("tile composition rejects mismatched sizes, preserves sources by default, a
   await page
     .locator("#tileset-canvas")
     .click({ position: { x: box.width * 0.75, y: box.height * 0.5 } });
-  await expect(
-    page.getByText("描画するタイル: 2", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByText("描画するタイル: 2", { exact: true })).toBeVisible();
   await page.locator("#editor-canvas").click({ position: { x: 16, y: 16 } });
-  await page
-    .getByRole("button", { name: "レイヤーを追加", exact: true })
-    .click();
+  await page.getByRole("button", { name: "レイヤーを追加", exact: true }).click();
   await palette.getByRole("button", { name: "green.png", exact: true }).click();
   await expect(page.locator("#tileset-canvas")).toHaveAttribute("width", "16");
   await page.locator("#editor-canvas").click({ position: { x: 48, y: 16 } });
@@ -161,31 +147,23 @@ test("tile composition rejects mismatched sizes, preserves sources by default, a
       path: "test-results/layer-sheets.png",
       fullPage: true,
     });
-  await page
-    .getByRole("button", { name: "スプライトシート再生", exact: true })
-    .click();
+  await page.getByRole("button", { name: "スプライトシート再生", exact: true }).click();
   await page.getByRole("button", { name: "タイル合成", exact: true }).click();
   await dialog.getByRole("button", { name: "red.png", exact: true }).click();
   await dialog.getByRole("button", { name: "blue.png", exact: true }).click();
   await dialog.getByLabel("合成画像名").fill("remove-sources");
   await dialog.getByLabel("保存後に元素材を削除").check();
   await dialog.getByRole("button", { name: "合成画像を保存" }).click();
-  await expect(
-    dialog.getByRole("progressbar", { name: "削除の進捗" }),
-  ).toBeVisible();
+  await expect(dialog.getByRole("progressbar", { name: "削除の進捗" })).toBeVisible();
   await expect(dialog).toHaveCount(0);
   await expect(
     page.getByRole("heading", { name: "remove-sources.png", exact: true }),
   ).toBeVisible();
   await expect(
-    page
-      .locator("asset-palette")
-      .getByRole("button", { name: "red.png", exact: true }),
+    page.locator("asset-palette").getByRole("button", { name: "red.png", exact: true }),
   ).toHaveCount(0);
 });
-test("automatic sound preview is debounced and stop cancels pending playback", async ({
-  page,
-}) => {
+test("automatic sound preview is debounced and stop cancels pending playback", async ({ page }) => {
   await page.addInitScript(() => {
     let starts = 0;
     Object.defineProperty(window, "previewStarts", { get: () => starts });
@@ -207,11 +185,8 @@ test("automatic sound preview is debounced and stop cancels pending playback", a
     } as unknown as typeof AudioContext;
   });
   await page.goto("/#sounds");
-  await expect(
-    page.getByRole("heading", { name: "音楽・効果音", exact: true }),
-  ).toBeVisible();
-  const count = () =>
-    page.evaluate(() => Reflect.get(window, "previewStarts") as number);
+  await expect(page.getByRole("heading", { name: "音楽・効果音", exact: true })).toBeVisible();
+  const count = () => page.evaluate(() => Reflect.get(window, "previewStarts") as number);
   await page.getByLabel("効果音名", { exact: true }).fill("silent name");
   expect(await count()).toBe(0);
   // Hold the debounce timer while browser actions run, even on slow CI hosts.
@@ -239,10 +214,7 @@ test("automatic sound preview is debounced and stop cancels pending playback", a
   await page.clock.runFor(500);
   expect(await count()).toBe(1);
   const order = await page.locator(".toolbar button").allTextContents();
-  expect(order.map((s) => s.trim()).slice(-2)).toEqual([
-    "エクスポート",
-    "WAVを素材として保存",
-  ]);
+  expect(order.map((s) => s.trim()).slice(-2)).toEqual(["エクスポート", "WAVを素材として保存"]);
 });
 
 test("failed composite upload preserves sources and split saving displays progress", async ({
@@ -253,8 +225,7 @@ test("failed composite upload preserves sources and split saving displays progre
     const { storage } = await import("/src/application/asset-service.ts");
     const original = storage.createFile;
     storage.createFile = async (input) => {
-      if (input.metadata.name === "failed.png")
-        throw new Error("保存テストの通信エラー");
+      if (input.metadata.name === "failed.png") throw new Error("保存テストの通信エラー");
       await new Promise((r) => setTimeout(r, 350));
       return original(input);
     };
@@ -270,8 +241,7 @@ test("failed composite upload preserves sources and split saving displays progre
   expect(
     await page.evaluate(async () => {
       const { app } = await import("/src/application/asset-service.ts");
-      return app.files.filter((f) => ["red", "blue"].includes(f.assetId))
-        .length;
+      return app.files.filter((f) => ["red", "blue"].includes(f.assetId)).length;
     }),
   ).toBe(2);
   await dialog.getByRole("button", { name: "閉じる", exact: true }).click();
@@ -292,21 +262,13 @@ test("failed composite upload preserves sources and split saving displays progre
   });
   await page.getByLabel("タイル幅", { exact: true }).fill("8");
   await page.getByLabel("タイル高さ", { exact: true }).fill("8");
-  await page
-    .getByRole("button", { name: "分割結果を確認", exact: true })
-    .click();
+  await page.getByRole("button", { name: "分割結果を確認", exact: true }).click();
   await expect(page.getByText(/8枚のPNG/)).toBeVisible();
-  await page
-    .getByRole("button", { name: "画像素材として保存", exact: true })
-    .click();
-  const progress = page
-    .getByRole("dialog")
-    .getByRole("progressbar", { name: "保存の進捗" });
+  await page.getByRole("button", { name: "画像素材として保存", exact: true }).click();
+  const progress = page.getByRole("dialog").getByRole("progressbar", { name: "保存の進捗" });
   await expect(progress).toBeVisible();
   await expect(progress).toHaveAttribute("max", "8");
-  await expect
-    .poll(async () => Number(await progress.getAttribute("value")))
-    .toBeGreaterThan(0);
+  await expect.poll(async () => Number(await progress.getAttribute("value"))).toBeGreaterThan(0);
   await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(
     await page.evaluate(async () => {

@@ -5,9 +5,7 @@ test("PNG containing SVG text remains PNG throughout import, storage fetch and t
   page,
 }) => {
   await page.goto("/");
-  await expect(
-    page.getByRole("heading", { name: "素材ライブラリ" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "素材ライブラリ" })).toBeVisible();
   const data = await page.evaluate(() => {
     const canvas = document.createElement("canvas");
     canvas.width = 2;
@@ -26,16 +24,12 @@ test("PNG containing SVG text remains PNG throughout import, storage fetch and t
     const { app, storage } = await import("/src/application/asset-service.ts");
     const types = [];
     for (const type of ["image/png", "image/svg+xml", ""]) {
-      const result = await validateImport(
-        new File([new Uint8Array(bytes)], "test.png", { type }),
-      );
+      const result = await validateImport(new File([new Uint8Array(bytes)], "test.png", { type }));
       types.push(result.blob.type);
-      if (result.blob.size !== bytes.length)
-        throw new Error("PNG content changed");
+      if (result.blob.size !== bytes.length) throw new Error("PNG content changed");
     }
     const original = storage.getFile;
-    storage.getFile = async () =>
-      new Blob([new Uint8Array(bytes)], { type: "image/svg+xml" });
+    storage.getFile = async () => new Blob([new Uint8Array(bytes)], { type: "image/svg+xml" });
     try {
       const blob = await app.blob({
         fileId: "test",
@@ -82,14 +76,8 @@ test("failed sound module fetch offers recovery", async ({ page }) => {
     return route.continue();
   });
   await page.getByRole("button", { name: "音楽・効果音", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "画面の読み込みに失敗しました" }),
-  ).toBeVisible();
-  await page
-    .getByRole("button", { name: "画面を再読み込み", exact: true })
-    .click();
-  await expect(
-    page.getByRole("heading", { name: "音楽・効果音", exact: true }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "画面の読み込みに失敗しました" })).toBeVisible();
+  await page.getByRole("button", { name: "画面を再読み込み", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "音楽・効果音", exact: true })).toBeVisible();
   await expect(page.getByRole("alert")).toHaveCount(0);
 });

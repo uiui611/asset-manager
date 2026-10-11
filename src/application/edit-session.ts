@@ -19,11 +19,7 @@ function dialog(name?: string, localDownload = false): Promise<string | null> {
   const element = document.createElement("dialog");
   element.setAttribute(
     "aria-label",
-    name === undefined
-      ? "未保存の変更"
-      : localDownload
-        ? "エクスポート名を入力"
-        : "保存名を入力",
+    name === undefined ? "未保存の変更" : localDownload ? "エクスポート名を入力" : "保存名を入力",
   );
   element.style.cssText =
     "border:1px solid #d5dfcd;border-radius:14px;padding:28px;max-width:440px;width:calc(100% - 48px);color:#304b35;background:#fcfefa;font:14px system-ui";
@@ -54,8 +50,7 @@ function dialog(name?: string, localDownload = false): Promise<string | null> {
   cancel.textContent = "キャンセル";
   const ok = document.createElement("button");
   ok.type = "submit";
-  ok.textContent =
-    name === undefined ? "変更を破棄" : localDownload ? "ダウンロード" : "保存";
+  ok.textContent = name === undefined ? "変更を破棄" : localDownload ? "ダウンロード" : "保存";
   for (const button of [cancel, ok])
     button.style.cssText =
       "padding:10px 18px;margin:8px 8px 0 0;border:1px solid #acbea0;border-radius:7px;background:#edf3e4;color:#304b35;cursor:pointer";
@@ -80,9 +75,7 @@ function dialog(name?: string, localDownload = false): Promise<string | null> {
       if (name === undefined) return finish("discard");
       const value = input.value.trim().replace(/\.json$/i, "");
       if (!value || /[\\/\r\n]/.test(value)) {
-        input.setCustomValidity(
-          "名前を入力してください（スラッシュは使えません）。",
-        );
+        input.setCustomValidity("名前を入力してください（スラッシュは使えません）。");
         input.reportValidity();
         return;
       }
@@ -94,8 +87,7 @@ function dialog(name?: string, localDownload = false): Promise<string | null> {
   });
   return pending;
 }
-export const askName = (name = "", localDownload = false) =>
-  dialog(name, localDownload);
+export const askName = (name = "", localDownload = false) => dialog(name, localDownload);
 export async function confirmDiscard() {
   if (editing.locked()) return false;
   return !editing.dirty() || (await dialog()) === "discard";

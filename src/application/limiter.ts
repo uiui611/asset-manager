@@ -3,8 +3,7 @@ export class Limiter {
   private waiting: (() => void)[] = [];
   constructor(private limit: number) {}
   async run<T>(action: () => Promise<T>): Promise<T> {
-    if (this.active >= this.limit)
-      await new Promise<void>((resolve) => this.waiting.push(resolve));
+    if (this.active >= this.limit) await new Promise<void>((resolve) => this.waiting.push(resolve));
     else this.active++;
     try {
       return await action();

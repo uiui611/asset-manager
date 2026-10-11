@@ -1,10 +1,5 @@
 import Dexie, { type Table } from "dexie";
-import type {
-  OperationJournal,
-  Project,
-  StoredFile,
-  Tag,
-} from "../domain/models";
+import type { OperationJournal, Project, StoredFile, Tag } from "../domain/models";
 export class AssetDatabase extends Dexie {
   assets!: Table<StoredFile, string>;
   fileMap!: Table<{ fileId: string; assetId: string }, string>;
@@ -25,10 +20,7 @@ export class AssetDatabase extends Dexie {
   >;
   syncState!: Table<{ key: string; value: string }, string>;
   operationJournal!: Table<OperationJournal, string>;
-  waveforms!: Table<
-    { assetId: string; values: number[]; version: string },
-    string
-  >;
+  waveforms!: Table<{ assetId: string; values: number[]; version: string }, string>;
   constructor(name = "asset-atelier-rustfs-v2") {
     super(name);
     this.version(1).stores({

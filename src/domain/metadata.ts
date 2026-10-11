@@ -7,9 +7,7 @@ export function validateWriteSize(sizes: number[]) {
   )
     throw new Error("1回の操作で保存できる合計サイズは1 GB以下です。");
 }
-export function encodeProperties(
-  file: Partial<StoredFile>,
-): Record<string, string> {
+export function encodeProperties(file: Partial<StoredFile>): Record<string, string> {
   if ((file.tagIds?.length || 0) > 50) throw new Error("タグは50個までです。");
   return {};
 }

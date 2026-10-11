@@ -2,10 +2,7 @@ import type { Kind, Project } from "../domain/models";
 import { character, map, sound } from "./generated";
 
 const validators = { map, character, sound };
-export function validateProject(
-  kind: Kind,
-  value: unknown,
-): asserts value is Project {
+export function validateProject(kind: Kind, value: unknown): asserts value is Project {
   if (kind !== "map" && kind !== "character" && kind !== "sound")
     throw new Error("プロジェクト種別が不正です。");
   if (
@@ -32,8 +29,7 @@ export function validateProject(
     delete (value as { parameters?: unknown }).parameters;
   }
   const validate = validators[kind];
-  if (!validate(value))
-    throw new Error(`JSONの形式が不正です: ${JSON.stringify(validate.errors)}`);
+  if (!validate(value)) throw new Error(`JSONの形式が不正です: ${JSON.stringify(validate.errors)}`);
   if (kind === "map") {
     const p = value as unknown as import("../domain/models").MapProject;
     if (
@@ -50,8 +46,7 @@ export function validateProject(
       throw new Error("マップのセル数または素材参照が不正です。");
   }
   if (kind === "sound") {
-    for (const track of (value as import("../domain/models").SoundPreset)
-      .tracks) {
+    for (const track of (value as import("../domain/models").SoundPreset).tracks) {
       const p = track.parameters;
       if (
         p.oldParams !== true ||

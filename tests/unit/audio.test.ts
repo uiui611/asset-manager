@@ -25,11 +25,7 @@ describe("sound mixing", () => {
       },
     ]);
     expect(mixed.length).toBe(3);
-    expect([...mixed]).toEqual([
-      expect.closeTo(0.2),
-      expect.closeTo(0.2),
-      expect.closeTo(0.3),
-    ]);
+    expect([...mixed]).toEqual([expect.closeTo(0.2), expect.closeTo(0.2), expect.closeTo(0.3)]);
   });
   it("uses one shared peak limiter to preserve relative volume", () => {
     const mixed = mixSamples([
@@ -76,9 +72,7 @@ describe("sound mixing", () => {
       updatedAt: "",
     };
     expect(() => validateProject("sound", data)).not.toThrow();
-    expect(() =>
-      validateProject("sound", { ...data, tracks: Array(9).fill(track) }),
-    ).toThrow();
+    expect(() => validateProject("sound", { ...data, tracks: Array(9).fill(track) })).toThrow();
     expect(() =>
       validateProject("sound", { ...data, tracks: [{ ...track, offset: 11 }] }),
     ).toThrow();

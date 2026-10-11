@@ -19,8 +19,7 @@ const paths: Record<string, string> = {
   trash: "M3 6h18 M9 6V3h6v3 M6 6l1 15h10l1-15 M10 10v7 M14 10v7",
   check: "M4 12l5 5L20 6",
   layers: "M2 8l10-6 10 6-10 6z M2 12l10 6 10-6 M2 16l10 6 10-6",
-  refresh:
-    "M3 11a9 9 0 0 1 16-6l2 2 M21 3v4h-4 M21 13a9 9 0 0 1-16 6l-2-2 M3 21v-4h4",
+  refresh: "M3 11a9 9 0 0 1 16-6l2 2 M21 3v4h-4 M21 13a9 9 0 0 1-16 6l-2-2 M3 21v-4h4",
   folder: "M3 5h7l2 3h9v13H3z",
   stop: "M6 6h12v12H6z",
   pause: "M8 4v16 M16 4v16",
@@ -31,4 +30,16 @@ const paths: Record<string, string> = {
   code: "M8 5l-7 7 7 7 M16 5l7 7-7 7 M14 3l-4 18",
 };
 export const icon = (name: string, size = 18) =>
-  html`<svg width=${size} height=${size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d=${paths[name] || paths.folder}></path></svg>`;
+  html`<svg
+    width=${size}
+    height=${size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.6"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <path d=${paths[name] || paths.folder}></path>
+  </svg>`;

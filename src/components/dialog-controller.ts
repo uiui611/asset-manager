@@ -20,8 +20,7 @@ export class DialogController implements ReactiveController {
       this.host.renderRoot instanceof ShadowRoot
         ? this.host.renderRoot.activeElement
         : document.activeElement;
-    while (active?.shadowRoot?.activeElement)
-      active = active.shadowRoot.activeElement;
+    while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement;
     const index = items.indexOf(active as HTMLElement);
     if (event.shiftKey && index <= 0) {
       event.preventDefault();
@@ -57,8 +56,7 @@ export class DialogController implements ReactiveController {
     document.removeEventListener("keydown", this.keydown, true);
   }
   hostUpdated() {
-    const dialog =
-      this.host.renderRoot.querySelector<HTMLElement>("[role=dialog]");
+    const dialog = this.host.renderRoot.querySelector<HTMLElement>("[role=dialog]");
     if (dialog !== this.dialog) {
       if (dialog) {
         this.previous = (

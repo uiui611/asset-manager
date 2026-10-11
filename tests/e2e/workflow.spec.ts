@@ -7,9 +7,7 @@ test("background upload, split, saved JSON, thumbnails, multitrack sound and mis
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
-  await expect(
-    page.getByRole("heading", { name: "素材ライブラリ" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "素材ライブラリ" })).toBeVisible();
   const png = await setup(page);
   const payload = {
     name: "forest.png",
@@ -18,15 +16,11 @@ test("background upload, split, saved JSON, thumbnails, multitrack sound and mis
   };
   await page.locator("#upload").setInputFiles(payload);
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "forest.png の詳細", exact: true }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "forest.png の詳細", exact: true })).toBeVisible();
   const transfer = await page.evaluateHandle(
     (bytes) => {
       const data = new DataTransfer();
-      data.items.add(
-        new File([new Uint8Array(bytes)], "dropped.png", { type: "image/png" }),
-      );
+      data.items.add(new File([new Uint8Array(bytes)], "dropped.png", { type: "image/png" }));
       return data;
     },
     [...payload.buffer],
@@ -36,37 +30,23 @@ test("background upload, split, saved JSON, thumbnails, multitrack sound and mis
     exact: true,
   });
   await card.dispatchEvent("dragenter", { dataTransfer: transfer });
-  await expect(
-    page.getByText("画像・音声をドロップして追加", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByText("画像・音声をドロップして追加", { exact: true })).toBeVisible();
   await card.dispatchEvent("dragover", { dataTransfer: transfer });
   await card.dispatchEvent("drop", { dataTransfer: transfer });
-  await expect(
-    page.getByText("画像・音声をドロップして追加", { exact: true }),
-  ).toHaveCount(0);
+  await expect(page.getByText("画像・音声をドロップして追加", { exact: true })).toHaveCount(0);
 
-  await expect(
-    page.getByRole("button", { name: "dropped.png の詳細", exact: true }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "dropped.png の詳細", exact: true })).toBeVisible();
   await page.locator("#split-upload").setInputFiles(payload);
   await page.getByLabel("タイル幅", { exact: true }).fill("16");
   await page.getByLabel("タイル高さ", { exact: true }).fill("16");
-  await page
-    .getByRole("button", { name: "分割結果を確認", exact: true })
-    .click();
+  await page.getByRole("button", { name: "分割結果を確認", exact: true }).click();
   await expect(page.getByText(/1枚のPNG/)).toBeVisible();
-  await page
-    .getByRole("button", { name: "画像素材として保存", exact: true })
-    .click();
+  await page.getByRole("button", { name: "画像素材として保存", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "forest_0001.png の詳細", exact: true }),
   ).toBeVisible();
-  await page
-    .getByRole("button", { name: "マップエディター", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "forest_0001.png", exact: false })
-    .click();
+  await page.getByRole("button", { name: "マップエディター", exact: true }).click();
+  await page.getByRole("button", { name: "forest_0001.png", exact: false }).click();
   await page.locator("#editor-canvas").click({ position: { x: 16, y: 16 } });
   await page.getByRole("button", { name: "保存する", exact: true }).click();
   await page.getByLabel("保存名", { exact: true }).fill("森のマップ");
@@ -84,15 +64,9 @@ test("background upload, split, saved JSON, thumbnails, multitrack sound and mis
       path: "test-results/map-editor.png",
       fullPage: true,
     });
-  await page
-    .getByRole("button", { name: "キャラクター合成", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "forest_0001.png", exact: false })
-    .click();
-  await page
-    .getByRole("button", { name: "ベース画像にする", exact: true })
-    .click();
+  await page.getByRole("button", { name: "キャラクター合成", exact: true }).click();
+  await page.getByRole("button", { name: "forest_0001.png", exact: false }).click();
+  await page.getByRole("button", { name: "ベース画像にする", exact: true }).click();
   await expect(page.locator("#editor-canvas")).toHaveAttribute("width", "16");
   await expect(page.locator("asset-thumbnail img").first()).toBeVisible();
   await page.locator("#editor-canvas").focus();
@@ -104,16 +78,12 @@ test("background upload, split, saved JSON, thumbnails, multitrack sound and mis
   await page.getByLabel("横倍率", { exact: true }).fill("2");
   await page.getByLabel("横倍率", { exact: true }).blur();
   await expect(page.getByLabel("縦倍率", { exact: true })).toHaveValue("2");
-  await page
-    .getByLabel("編集用JSON名", { exact: true })
-    .fill("森のキャラクター");
+  await page.getByLabel("編集用JSON名", { exact: true }).fill("森のキャラクター");
   await page.getByLabel("X座標", { exact: true }).fill("4");
   await page.getByLabel("X座標", { exact: true }).blur();
   await page.getByRole("button", { name: "保存する", exact: true }).click();
   await expect(page.getByText("保存済み", { exact: true })).toBeVisible();
-  await page
-    .getByRole("button", { name: "合成PNGをストレージへ", exact: true })
-    .click();
+  await page.getByRole("button", { name: "合成PNGをストレージへ", exact: true }).click();
   await expect(page.getByRole("alert")).toHaveCount(0);
   await page.getByRole("button", { name: /素材ライブラリ/ }).click();
   await expect(
@@ -143,12 +113,8 @@ test("background upload, split, saved JSON, thumbnails, multitrack sound and mis
     ["森のキャラクター", "編集用JSON名", "characters"],
     ["ライブラリ効果音", "効果音名", "sounds"],
   ]) {
-    await page
-      .getByRole("button", { name: `${name}.json の詳細`, exact: true })
-      .click();
-    await page
-      .getByRole("button", { name: "編集画面で開く", exact: true })
-      .click();
+    await page.getByRole("button", { name: `${name}.json の詳細`, exact: true }).click();
+    await page.getByRole("button", { name: "編集画面で開く", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`#${route}\\?project=`));
     await expect(page.getByLabel(field, { exact: true })).toHaveValue(name);
     if (route === "maps") {
@@ -170,17 +136,11 @@ test("background upload, split, saved JSON, thumbnails, multitrack sound and mis
     await page.getByRole("button", { name: /素材ライブラリ/ }).click();
   }
   // A local source can be split without storing the source image.
-  await page
-    .locator("#split-upload")
-    .setInputFiles({ ...payload, name: "unregistered.png" });
+  await page.locator("#split-upload").setInputFiles({ ...payload, name: "unregistered.png" });
   await page.getByLabel("タイル幅", { exact: true }).fill("16");
   await page.getByLabel("タイル高さ", { exact: true }).fill("16");
-  await page
-    .getByRole("button", { name: "分割結果を確認", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "画像素材として保存", exact: true })
-    .click();
+  await page.getByRole("button", { name: "分割結果を確認", exact: true }).click();
+  await page.getByRole("button", { name: "画像素材として保存", exact: true }).click();
   await expect(
     page.getByRole("button", {
       name: "unregistered_0001.png の詳細",
@@ -191,28 +151,20 @@ test("background upload, split, saved JSON, thumbnails, multitrack sound and mis
     page.getByRole("button", { name: "unregistered.png の詳細", exact: true }),
   ).toHaveCount(0);
   // Deleting a referenced image leaves the map editable and saveable.
-  await page
-    .getByRole("button", { name: "forest_0001.png の詳細", exact: true })
-    .click();
+  await page.getByRole("button", { name: "forest_0001.png の詳細", exact: true }).click();
   await page.locator(".dialog footer button.danger").click();
   await page.getByRole("button", { name: "削除する", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "forest_0001.png の詳細", exact: true }),
   ).toHaveCount(0);
-  await page
-    .getByRole("button", { name: "森のマップ.json の詳細", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "編集画面で開く", exact: true })
-    .click();
+  await page.getByRole("button", { name: "森のマップ.json の詳細", exact: true }).click();
+  await page.getByRole("button", { name: "編集画面で開く", exact: true }).click();
   await expect(page.getByText(/1件の素材が見つかりません/)).toBeVisible();
   await page.getByRole("button", { name: "保存する", exact: true }).click();
   await expect(page.getByRole("alert")).toHaveCount(0);
   await page.getByRole("button", { name: "音楽・効果音", exact: true }).click();
   await page.getByLabel("効果音名", { exact: true }).fill("新しい効果音");
-  await page
-    .getByRole("button", { name: "WAVを素材として保存", exact: true })
-    .click();
+  await page.getByRole("button", { name: "WAVを素材として保存", exact: true }).click();
   await page.getByRole("button", { name: /素材ライブラリ/ }).click();
   await page.getByRole("button", { name: "変更を破棄", exact: true }).click();
   await expect(
@@ -303,12 +255,8 @@ test("save as keeps independent assets, undo never changes identity, and opening
   await page.getByLabel("保存名", { exact: true }).fill("元の音");
   await page.getByRole("button", { name: "保存", exact: true }).click();
   await expect(page.getByText("保存済み", { exact: true })).toBeVisible();
-  await page
-    .getByRole("button", { name: "トラックを追加", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "別名で保存する", exact: true })
-    .click();
+  await page.getByRole("button", { name: "トラックを追加", exact: true }).click();
+  await page.getByRole("button", { name: "別名で保存する", exact: true }).click();
   await page.getByLabel("保存名", { exact: true }).fill("重ねた音");
   await page.getByRole("button", { name: "保存", exact: true }).click();
   await expect(page.getByText("保存済み", { exact: true })).toBeVisible();
@@ -319,9 +267,7 @@ test("save as keeps independent assets, undo never changes identity, and opening
   expect(
     await page
       .locator("sounds-page")
-      .evaluate(
-        (el) => (el as unknown as { preset: { id: string } }).preset.id,
-      ),
+      .evaluate((el) => (el as unknown as { preset: { id: string } }).preset.id),
   ).toBe(copyId);
   await page.getByRole("button", { name: "保存する", exact: true }).click();
   await expect(page.getByText("保存済み", { exact: true })).toBeVisible();
@@ -346,9 +292,7 @@ test("save as keeps independent assets, undo never changes identity, and opening
   expect(files.files).toHaveLength(2);
   expect(files.files.find((f) => f.id !== copyId)?.version).toBe("1");
   await page.getByLabel("開く", { exact: true }).selectOption(files.first);
-  await expect(page.getByLabel("効果音名", { exact: true })).toHaveValue(
-    files.name,
-  );
+  await expect(page.getByLabel("効果音名", { exact: true })).toHaveValue(files.name);
   await page.getByRole("button", { name: /素材ライブラリ/ }).click();
   await page.getByRole("button", { name: "音声", exact: true }).click();
   await expect(page.locator("audio-row")).toHaveCount(2);
@@ -365,8 +309,7 @@ test("uploads continue while navigating and do not open a confirmation dialog", 
     const create = storage.createFile.bind(storage);
     storage.createFile = async (input) => {
       await new Promise<void>((resolve) => {
-        (window as unknown as { finishUpload: () => void }).finishUpload =
-          resolve;
+        (window as unknown as { finishUpload: () => void }).finishUpload = resolve;
       });
       return create(input);
     };
@@ -378,24 +321,14 @@ test("uploads continue while navigating and do not open a confirmation dialog", 
   });
   await expect(page.getByText(/素材を登録中/)).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await page
-    .getByRole("button", { name: "マップエディター", exact: true })
-    .click();
-  await expect(
-    page.getByRole("heading", { name: "マップエディター", exact: true }),
-  ).toBeVisible();
+  await page.getByRole("button", { name: "マップエディター", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "マップエディター", exact: true })).toBeVisible();
   await expect
     .poll(() =>
-      page.evaluate(
-        () =>
-          typeof (window as unknown as { finishUpload?: () => void })
-            .finishUpload,
-      ),
+      page.evaluate(() => typeof (window as unknown as { finishUpload?: () => void }).finishUpload),
     )
     .toBe("function");
-  await page.evaluate(() =>
-    (window as unknown as { finishUpload: () => void }).finishUpload(),
-  );
+  await page.evaluate(() => (window as unknown as { finishUpload: () => void }).finishUpload());
   await expect(page.getByText(/素材を登録中/)).toHaveCount(0);
   await expect(page.locator("asset-thumbnail img")).toBeVisible();
   await page.getByRole("button", { name: /素材ライブラリ/ }).click();

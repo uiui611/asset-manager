@@ -1,18 +1,10 @@
-import {
-  overwriteBakedLayer,
-  prepareCharacterLayers,
-} from "../../application/character-bake";
+import { overwriteBakedLayer, prepareCharacterLayers } from "../../application/character-bake";
 import { confirmAction } from "../../components/confirm-action";
 import "../../components/asset-palette";
 import { css, html, LitElement } from "lit";
 import { currentProject } from "../../app/router";
 import { app, storage } from "../../application/asset-service";
-import {
-  askName,
-  confirmDiscard,
-  editing,
-  fingerprint,
-} from "../../application/edit-session";
+import { askName, confirmDiscard, editing, fingerprint } from "../../application/edit-session";
 import { download, hashBlob, jsonBlob } from "../../application/media";
 import { loadImage } from "../../canvas/images";
 import { drawCharacter, drawMap } from "../../canvas/renderers";
@@ -83,9 +75,225 @@ export class EditorPage extends LitElement {
   static styles = [
     shared,
     css`
-    .workspace{display:grid;grid-template-columns:185px minmax(0,1fr) 220px;gap:14px;align-items:start}.tools{padding:16px;background:#fcfdfa;border:1px solid #e0e7d9;border-radius:11px;min-width:0}.tools h3{margin-bottom:13px}.tools label{margin-bottom:12px}.stage{border:1px solid #dce4d5;border-radius:10px;overflow:hidden;background:#edf1e6;min-width:0}.stage-head{padding:10px 13px;background:#fcfdfa;border-bottom:1px solid #dce4d5;display:flex;align-items:center;justify-content:space-between;gap:5px;font-size:10px}.stage-body{min-height:430px;max-height:70vh;overflow:auto;padding:25px;display:grid;place-items:start center}.stage canvas{display:block;box-shadow:0 3px 15px #34432812;touch-action:none;background:#fff;max-width:none}.stage-foot{font-size:10px;color:#8a9980;padding:9px 14px;border-top:1px solid #dce4d5;display:flex;justify-content:space-between}.layer{border:1px solid #e0e8d9;padding:9px;border-radius:7px;margin-bottom:7px;cursor:pointer;background:white}.layer.active{background:#edf3e4;border-color:#a8be95}.layer .row{gap:5px}.layer input[type=text]{padding:3px 5px;width:100%;font-size:11px}.layer button{padding:3px}.layer label{margin:0;font-size:10px}.palette{display:flex;flex-direction:column;gap:7px;max-height:400px;overflow:auto}.palette button{justify-content:flex-start;padding:7px;font-size:10px;min-width:0;text-align:left}.palette button.active{border-color:#92aa7c;background:#edf3e4}.palette img{width:30px;height:30px;object-fit:contain;image-rendering:pixelated}.palette span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mini-actions{display:flex;gap:6px;margin-bottom:15px;flex-wrap:wrap}.mini-actions button{font-size:10px;padding:7px}.fields{display:grid;grid-template-columns:1fr 1fr;gap:8px}.fields input{width:100%}.fields label{font-size:10px}.project-name{font-size:16px;font-weight:600;width:100%;margin-bottom:14px}.project-menu{max-width:250px}.missing{font-size:10px;color:#b05c54;margin-top:7px}.draft-label{font-size:10px;color:#8b9c7a}.empty-canvas{font-size:11px;padding:12px;color:#8b9a7b}.stage-tools{display:flex;gap:5px}.stage-tools button{font-size:10px;padding:4px 8px}.selected-tool{background:#e1ead6;border-color:#b2c99d}
-    @media(max-width:1200px){.workspace{grid-template-columns:150px minmax(0,1fr)}.inspector{grid-column:1/-1}.inspector .layer-list{display:flex;gap:8px;flex-wrap:wrap}.inspector .layer{min-width:150px}.stage-body{padding:15px}.fields{grid-template-columns:repeat(4,1fr)}}@media(max-width:760px){.workspace{grid-template-columns:1fr}.stage-body{min-height:300px}.palette{max-height:130px;flex-direction:row;flex-wrap:wrap}.palette button{max-width:150px}.tools{padding:12px}.fields{grid-template-columns:1fr 1fr}.project-menu{max-width:100%}}
-  `,
+      .workspace {
+        display: grid;
+        grid-template-columns: 185px minmax(0, 1fr) 220px;
+        gap: 14px;
+        align-items: start;
+      }
+      .tools {
+        padding: 16px;
+        background: #fcfdfa;
+        border: 1px solid #e0e7d9;
+        border-radius: 11px;
+        min-width: 0;
+      }
+      .tools h3 {
+        margin-bottom: 13px;
+      }
+      .tools label {
+        margin-bottom: 12px;
+      }
+      .stage {
+        border: 1px solid #dce4d5;
+        border-radius: 10px;
+        overflow: hidden;
+        background: #edf1e6;
+        min-width: 0;
+      }
+      .stage-head {
+        padding: 10px 13px;
+        background: #fcfdfa;
+        border-bottom: 1px solid #dce4d5;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 5px;
+        font-size: 10px;
+      }
+      .stage-body {
+        min-height: 430px;
+        max-height: 70vh;
+        overflow: auto;
+        padding: 25px;
+        display: grid;
+        place-items: start center;
+      }
+      .stage canvas {
+        display: block;
+        box-shadow: 0 3px 15px #34432812;
+        touch-action: none;
+        background: #fff;
+        max-width: none;
+      }
+      .stage-foot {
+        font-size: 10px;
+        color: #8a9980;
+        padding: 9px 14px;
+        border-top: 1px solid #dce4d5;
+        display: flex;
+        justify-content: space-between;
+      }
+      .layer {
+        border: 1px solid #e0e8d9;
+        padding: 9px;
+        border-radius: 7px;
+        margin-bottom: 7px;
+        cursor: pointer;
+        background: white;
+      }
+      .layer.active {
+        background: #edf3e4;
+        border-color: #a8be95;
+      }
+      .layer .row {
+        gap: 5px;
+      }
+      .layer input[type="text"] {
+        padding: 3px 5px;
+        width: 100%;
+        font-size: 11px;
+      }
+      .layer button {
+        padding: 3px;
+      }
+      .layer label {
+        margin: 0;
+        font-size: 10px;
+      }
+      .palette {
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+        max-height: 400px;
+        overflow: auto;
+      }
+      .palette button {
+        justify-content: flex-start;
+        padding: 7px;
+        font-size: 10px;
+        min-width: 0;
+        text-align: left;
+      }
+      .palette button.active {
+        border-color: #92aa7c;
+        background: #edf3e4;
+      }
+      .palette img {
+        width: 30px;
+        height: 30px;
+        object-fit: contain;
+        image-rendering: pixelated;
+      }
+      .palette span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .mini-actions {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 15px;
+        flex-wrap: wrap;
+      }
+      .mini-actions button {
+        font-size: 10px;
+        padding: 7px;
+      }
+      .fields {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      .fields input {
+        width: 100%;
+      }
+      .fields label {
+        font-size: 10px;
+      }
+      .project-name {
+        font-size: 16px;
+        font-weight: 600;
+        width: 100%;
+        margin-bottom: 14px;
+      }
+      .project-menu {
+        max-width: 250px;
+      }
+      .missing {
+        font-size: 10px;
+        color: #b05c54;
+        margin-top: 7px;
+      }
+      .draft-label {
+        font-size: 10px;
+        color: #8b9c7a;
+      }
+      .empty-canvas {
+        font-size: 11px;
+        padding: 12px;
+        color: #8b9a7b;
+      }
+      .stage-tools {
+        display: flex;
+        gap: 5px;
+      }
+      .stage-tools button {
+        font-size: 10px;
+        padding: 4px 8px;
+      }
+      .selected-tool {
+        background: #e1ead6;
+        border-color: #b2c99d;
+      }
+      @media (max-width: 1200px) {
+        .workspace {
+          grid-template-columns: 150px minmax(0, 1fr);
+        }
+        .inspector {
+          grid-column: 1/-1;
+        }
+        .inspector .layer-list {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+        .inspector .layer {
+          min-width: 150px;
+        }
+        .stage-body {
+          padding: 15px;
+        }
+        .fields {
+          grid-template-columns: repeat(4, 1fr);
+        }
+      }
+      @media (max-width: 760px) {
+        .workspace {
+          grid-template-columns: 1fr;
+        }
+        .stage-body {
+          min-height: 300px;
+        }
+        .palette {
+          max-height: 130px;
+          flex-direction: row;
+          flex-wrap: wrap;
+        }
+        .palette button {
+          max-width: 150px;
+        }
+        .tools {
+          padding: 12px;
+        }
+        .fields {
+          grid-template-columns: 1fr 1fr;
+        }
+        .project-menu {
+          max-width: 100%;
+        }
+      }
+    `,
   ];
   kind: "map" | "character" = "map";
   project: EditorProject = makeMap();
@@ -158,18 +366,12 @@ export class EditorPage extends LitElement {
     passive: false,
   };
   private wheelZoom = (event: WheelEvent) => {
-    if (this.kind !== "character" || app.busy || this.drag || !event.deltaY)
-      return;
+    if (this.kind !== "character" || app.busy || this.drag || !event.deltaY) return;
     event.preventDefault();
-    const delta =
-      event.deltaY *
-      (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 400 : 1);
+    const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 400 : 1);
     this.zoom = Math.min(
       16,
-      Math.max(
-        0.05,
-        this.zoom * Math.exp(-Math.max(-200, Math.min(200, delta)) * 0.002),
-      ),
+      Math.max(0.05, this.zoom * Math.exp(-Math.max(-200, Math.min(200, delta)) * 0.002)),
     );
   };
   private loadedKind = "";
@@ -203,15 +405,7 @@ export class EditorPage extends LitElement {
     const layer = this.project.layers.find((l) => l.id === this.layerId);
     if (
       !layer ||
-      ![
-        "ArrowLeft",
-        "ArrowRight",
-        "ArrowUp",
-        "ArrowDown",
-        "+",
-        "=",
-        "-",
-      ].includes(event.key)
+      !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "+", "=", "-"].includes(event.key)
     )
       return;
     event.preventDefault();
@@ -296,9 +490,7 @@ export class EditorPage extends LitElement {
   }
   private async loadImages() {
     const seq = ++this.renderSequence;
-    const needed = new Set(
-      [...referenceIds(this.project), this.assetId].filter(Boolean),
-    );
+    const needed = new Set([...referenceIds(this.project), this.assetId].filter(Boolean));
     for (const id of needed) {
       const file = app.files.find((f) => f.assetId === id);
       if (!file || !isRaster(file)) {
@@ -306,8 +498,7 @@ export class EditorPage extends LitElement {
         this.imageVersions.delete(id);
         continue;
       }
-      if (this.images.has(id) && this.imageVersions.get(id) === file.version)
-        continue;
+      if (this.images.has(id) && this.imageVersions.get(id) === file.version) continue;
       this.images.delete(id);
       if (file && isRaster(file) && storage.connected)
         try {
@@ -324,8 +515,7 @@ export class EditorPage extends LitElement {
     this.draw();
   }
   private draw() {
-    const canvas =
-      this.renderRoot.querySelector<HTMLCanvasElement>("#editor-canvas");
+    const canvas = this.renderRoot.querySelector<HTMLCanvasElement>("#editor-canvas");
     if (!canvas) return;
     if ("tilesets" in this.project)
       drawMap(canvas, this.project, (id) => this.images.get(id), this.grid);
@@ -343,21 +533,13 @@ export class EditorPage extends LitElement {
       if (!layer || layer.locked) return;
       try {
         const image = await loadImage(await app.blob(file));
-        if (
-          sequence !== this.pickSequence ||
-          this.project !== project ||
-          !this.isConnected
-        )
-          return;
+        if (sequence !== this.pickSequence || this.project !== project || !this.isConnected) return;
         this.images.set(file.assetId, image);
         this.imageVersions.set(file.assetId, file.version);
         this.edit(() => {
           layer.tileset = {
             assetId: file.assetId,
-            tileWidth: Math.min(
-              layer.tileset?.tileWidth || project.tileWidth,
-              image.naturalWidth,
-            ),
+            tileWidth: Math.min(layer.tileset?.tileWidth || project.tileWidth, image.naturalWidth),
             tileHeight: Math.min(
               layer.tileset?.tileHeight || project.tileHeight,
               image.naturalHeight,
@@ -377,43 +559,47 @@ export class EditorPage extends LitElement {
       sheet = layer?.tileset;
     if (!sheet?.assetId)
       return html`<p class="muted">このレイヤーで使うタイル画像セットを選択してください。</p>`;
-    return html`<div class="fields" style="margin-top:12px">${(
-      ["tileWidth", "tileHeight"] as const
-    ).map(
-      (key, i) =>
-        html`<label>${i ? "コマ高さ" : "コマ幅"}<input aria-label=${i ? "タイルセットのコマ高さ" : "タイルセットのコマ幅"} type="number" min="1" max="4096" .value=${String(sheet[key])} ?disabled=${layer?.locked} @change=${(
-          e: Event,
-        ) => {
-          const n = Number((e.target as HTMLInputElement).value);
-          if (Number.isInteger(n) && n >= 1 && n <= 4096) {
-            this.edit(() => (sheet[key] = n));
-            this.tileIndex = 0;
-          }
-        }}></label>`,
-    )}</div><p>描画するタイル: ${this.tileIndex + 1}</p><canvas id="tileset-canvas" aria-label="タイルセットのコマ選択" style="width:100%;height:auto;image-rendering:pixelated;cursor:crosshair" @click=${(
-      e: MouseEvent,
-    ) => {
-      const canvas = e.currentTarget as HTMLCanvasElement,
-        r = canvas.getBoundingClientRect(),
-        cols = Math.floor(canvas.width / sheet.tileWidth),
-        rows = Math.floor(canvas.height / sheet.tileHeight),
-        x = Math.floor(
-          (((e.clientX - r.left) / r.width) * canvas.width) / sheet.tileWidth,
-        ),
-        y = Math.floor(
-          (((e.clientY - r.top) / r.height) * canvas.height) / sheet.tileHeight,
-        );
-      if (x >= 0 && x < cols && y >= 0 && y < rows)
-        this.tileIndex = y * cols + x;
-    }}></canvas>`;
+    return html`<div class="fields" style="margin-top:12px">
+        ${(["tileWidth", "tileHeight"] as const).map(
+          (key, i) =>
+            html`<label
+              >${i ? "コマ高さ" : "コマ幅"}<input
+                aria-label=${i ? "タイルセットのコマ高さ" : "タイルセットのコマ幅"}
+                type="number"
+                min="1"
+                max="4096"
+                .value=${String(sheet[key])}
+                ?disabled=${layer?.locked}
+                @change=${(e: Event) => {
+                  const n = Number((e.target as HTMLInputElement).value);
+                  if (Number.isInteger(n) && n >= 1 && n <= 4096) {
+                    this.edit(() => (sheet[key] = n));
+                    this.tileIndex = 0;
+                  }
+                }}
+            /></label>`,
+        )}
+      </div>
+      <p>描画するタイル: ${this.tileIndex + 1}</p>
+      <canvas
+        id="tileset-canvas"
+        aria-label="タイルセットのコマ選択"
+        style="width:100%;height:auto;image-rendering:pixelated;cursor:crosshair"
+        @click=${(e: MouseEvent) => {
+          const canvas = e.currentTarget as HTMLCanvasElement,
+            r = canvas.getBoundingClientRect(),
+            cols = Math.floor(canvas.width / sheet.tileWidth),
+            rows = Math.floor(canvas.height / sheet.tileHeight),
+            x = Math.floor((((e.clientX - r.left) / r.width) * canvas.width) / sheet.tileWidth),
+            y = Math.floor((((e.clientY - r.top) / r.height) * canvas.height) / sheet.tileHeight);
+          if (x >= 0 && x < cols && y >= 0 && y < rows) this.tileIndex = y * cols + x;
+        }}
+      ></canvas>`;
   }
   private drawTileset() {
     if (!("tilesets" in this.project)) return;
-    const sheet = this.project.layers.find(
-        (l) => l.id === this.layerId,
-      )?.tileset,
-      canvas =
-        this.renderRoot.querySelector<HTMLCanvasElement>("#tileset-canvas");
+    const sheet = this.project.layers.find((l) => l.id === this.layerId)?.tileset,
+      canvas = this.renderRoot.querySelector<HTMLCanvasElement>("#tileset-canvas");
     if (!sheet || !canvas) return;
     const image = this.images.get(sheet.assetId),
       ctx = canvas.getContext("2d");
@@ -457,11 +643,7 @@ export class EditorPage extends LitElement {
   }
   private changed() {
     this.project = { ...this.project, updatedAt: now() };
-    this.saved = this.dirty()
-      ? "未保存の変更"
-      : this.version
-        ? "保存済み"
-        : "未保存";
+    this.saved = this.dirty() ? "未保存の変更" : this.version ? "保存済み" : "未保存";
     this.requestUpdate();
     this.draw();
   }
@@ -524,19 +706,13 @@ export class EditorPage extends LitElement {
   private paint(e: PointerEvent) {
     if (!("tilesets" in this.project)) return;
     const layer = this.project.layers.find((l) => l.id === this.layerId);
-    if (
-      !layer ||
-      layer.locked ||
-      !layer.visible ||
-      (!this.eraser && !layer.tileset?.assetId)
-    )
+    if (!layer || layer.locked || !layer.visible || (!this.eraser && !layer.tileset?.assetId))
       return;
     const canvas = e.currentTarget as HTMLCanvasElement;
     const r = canvas.getBoundingClientRect();
     const x = Math.floor(((e.clientX - r.left) / r.width) * this.project.width),
       y = Math.floor(((e.clientY - r.top) / r.height) * this.project.height);
-    if (x < 0 || y < 0 || x >= this.project.width || y >= this.project.height)
-      return;
+    if (x < 0 || y < 0 || x >= this.project.width || y >= this.project.height) return;
     layer.cells[y * this.project.width + x] = this.eraser ? -1 : this.tileIndex;
     this.changed();
   }
@@ -582,13 +758,8 @@ export class EditorPage extends LitElement {
     this.edit(() => {
       if ("tilesets" in this.project) {
         if (this.project.layers.length <= 1) return;
-        this.project.layers = this.project.layers.filter(
-          (l) => l.id !== this.layerId,
-        );
-      } else
-        this.project.layers = this.project.layers.filter(
-          (l) => l.id !== this.layerId,
-        );
+        this.project.layers = this.project.layers.filter((l) => l.id !== this.layerId);
+      } else this.project.layers = this.project.layers.filter((l) => l.id !== this.layerId);
       this.layerId = this.project.layers[0]?.id || "";
     });
   }
@@ -625,26 +796,17 @@ export class EditorPage extends LitElement {
         const scale = Math.min(1, 192 / Math.max(canvas.width, canvas.height));
         preview.width = Math.max(1, Math.round(canvas.width * scale));
         preview.height = Math.max(1, Math.round(canvas.height * scale));
-        preview
-          .getContext("2d")
-          ?.drawImage(canvas, 0, 0, preview.width, preview.height);
+        preview.getContext("2d")?.drawImage(canvas, 0, 0, preview.width, preview.height);
         snapshot.previewImage = preview.toDataURL("image/png");
       }
-      return app.saveProject(
-        this.kind,
-        snapshot,
-        asCopy ? undefined : this.version,
-      );
+      return app.saveProject(this.kind, snapshot, asCopy ? undefined : this.version);
     });
     if (result) {
       this.version = result.version;
       this.project = {
         ...this.project,
         id: snapshot.id,
-        name:
-          this.project.name === originalName
-            ? snapshot.name
-            : this.project.name,
+        name: this.project.name === originalName ? snapshot.name : this.project.name,
       };
       this.baseline = fingerprint(snapshot);
       this.saved = this.dirty() ? "未保存の変更" : "保存済み";
@@ -671,8 +833,7 @@ export class EditorPage extends LitElement {
   }
   private fitCanvas() {
     if (!("canvas" in this.project)) return;
-    const available =
-      this.renderRoot.querySelector(".stage-body")?.clientWidth || 600;
+    const available = this.renderRoot.querySelector(".stage-body")?.clientWidth || 600;
     this.zoom = Math.min(
       16,
       Math.max(0.05, (available - 50) / this.project.canvas.width),
@@ -731,11 +892,7 @@ export class EditorPage extends LitElement {
         try {
           await Promise.all(
             Array.from({ length: Math.min(2, items.length) }, async () => {
-              while (
-                queue.length &&
-                !failure &&
-                cancellation === app.cancellationToken
-              ) {
+              while (queue.length && !failure && cancellation === app.cancellationToken) {
                 const item = queue.shift();
                 if (!item) return;
                 try {
@@ -773,17 +930,11 @@ export class EditorPage extends LitElement {
               scale = Math.min(1, 192 / Math.max(canvas.width, canvas.height));
             preview.width = Math.max(1, Math.round(canvas.width * scale));
             preview.height = Math.max(1, Math.round(canvas.height * scale));
-            preview
-              .getContext("2d")
-              ?.drawImage(canvas, 0, 0, preview.width, preview.height);
+            preview.getContext("2d")?.drawImage(canvas, 0, 0, preview.width, preview.height);
             snapshot.previewImage = preview.toDataURL("image/png");
             this.bakeStatus = "編集用JSONを保存中…";
             try {
-              const saved = await app.saveProject(
-                "character",
-                snapshot,
-                this.version,
-              );
+              const saved = await app.saveProject("character", snapshot, this.version);
               this.version = saved.version;
               this.project = snapshot;
               this.baseline = fingerprint(snapshot);
@@ -794,8 +945,7 @@ export class EditorPage extends LitElement {
               );
             }
           }
-          if (queue.length && !failure)
-            failure = new Error("切り出し保存を中断しました。");
+          if (queue.length && !failure) failure = new Error("切り出し保存を中断しました。");
           if (failure)
             throw new Error(
               `${done} / ${items.length} 件を上書きしました。未完了のレイヤーは元の設定を保持しています。${String(failure)}`,
@@ -809,8 +959,7 @@ export class EditorPage extends LitElement {
     } finally {
       this.baking = false;
       if (app.error)
-        this.bakeStatus =
-          "切り出し保存を完了できませんでした。上のエラーを確認してください。";
+        this.bakeStatus = "切り出し保存を完了できませんでした。上のエラーを確認してください。";
       this.requestUpdate();
     }
   }
@@ -823,9 +972,7 @@ export class EditorPage extends LitElement {
       await this.loadImages();
 
       const canvas = document.createElement("canvas");
-      drawCharacter(canvas, this.project as CharacterComposition, (id) =>
-        this.images.get(id),
-      );
+      drawCharacter(canvas, this.project as CharacterComposition, (id) => this.images.get(id));
       const blob = await new Promise<Blob>((resolve, reject) =>
         canvas.toBlob(
           (b) => (b ? resolve(b) : reject(new Error("PNGを生成できません。"))),
@@ -856,17 +1003,12 @@ export class EditorPage extends LitElement {
     if (app.busy) return;
     if (!file || !(await confirmDiscard())) return;
     await app.run(async () => {
-      if (file.size > 20_000_000)
-        throw new Error("編集用JSONJSONは20 MB以下にしてください。");
+      if (file.size > 20_000_000) throw new Error("編集用JSONJSONは20 MB以下にしてください。");
       const project = JSON.parse(await file.text());
       validateProject(this.kind, project);
       if (
         "tilesets" in project &&
-        project.width *
-          project.tileWidth *
-          project.height *
-          project.tileHeight >
-          16_777_216
+        project.width * project.tileWidth * project.height * project.tileHeight > 16_777_216
       )
         throw new Error("描画サイズが大きすぎます。");
       project.id = uid();
@@ -884,222 +1026,400 @@ export class EditorPage extends LitElement {
     const character = "canvas" in p ? p : undefined;
     const selectedLayer = p.layers.find((l) => l.id === this.layerId);
     const rasters = app.files.filter((f) => isRaster(f));
-    const missing = referenceIds(p).filter(
-      (id) => !app.files.some((f) => f.assetId === id),
-    );
-    const width = map
-      ? map.width * map.tileWidth
-      : character?.canvas.width || 512;
-    const height = map
-      ? map.height * map.tileHeight
-      : character?.canvas.height || 512;
-    return html`<div class="page-head"><div><div class="eyebrow" style="margin-bottom:7px">${map ? "MAKE ROOM FOR ADVENTURE" : "BRING YOUR CHARACTERS TO LIFE"}</div><h1>${map ? "マップエディター" : "キャラクター合成"}</h1><p>${map ? "タイルを並べて、冒険の舞台を描こう。" : "レイヤーを重ねて、表情と個性をつくろう。"}</p></div><div class="row"><button ?disabled=${app.busy} @click=${() => this.newProject()}>${icon("plus", 15)}新規作成</button><button class="primary" ?disabled=${app.busy || !storage.connected} @click=${() => this.save()}>${icon("cloud", 16)}保存する</button><button ?disabled=${app.busy || !storage.connected} @click=${() => this.save(true)}>別名で保存する</button></div></div>
-    <div class="toolbar" ?inert=${this.baking}><select aria-label="開く" class="project-menu" @change=${(
-      e: Event,
-    ) => {
-      void this.open((e.target as HTMLSelectElement).value);
-      (e.target as HTMLSelectElement).value = "";
-    }}><option value="">開く…</option>${this.projects.map((project) => html`<option value=${project.id}>${project.name}${project.dirty ? " · 下書き" : ""}</option>`)}</select><button class="small" @click=${() => this.renderRoot.querySelector<HTMLInputElement>("#json-import")?.click()}>インポート</button><input id="json-import" class="sr-only" type="file" accept=".json,application/json" @change=${(
-      e: Event,
-    ) => {
-      const input = e.target as HTMLInputElement;
-      void this.importJson(input.files?.[0]);
-      input.value = "";
-    }}><button class="small" title="端末へダウンロード" @click=${() => this.exportJson()}>${icon("download", 13)}エクスポート</button>${character ? html`<button class="small" ?disabled=${app.busy || !storage.connected || !character.layers.length} @click=${() => this.exportPng()}>合成PNGをストレージへ</button><button class="small" ?disabled=${app.busy || !storage.connected || !character.layers.length} @click=${() => this.bakeLayers()}>元素材を切り出して上書き</button>` : ""}<span class="draft-label" role="status">${this.saved}</span></div>
-    ${missing.length ? html`<div class="notice error" style="margin-bottom:16px">${missing.length}件の素材が見つかりません。${map ? "編集と保存を続けられます。各レイヤーの素材パレットで差し替えできます。" : "レイヤーの素材を差し替えるか削除してください。"}</div>` : ""}
-    ${this.bakeStatus ? html`<p class="notice" role="status">${this.bakeStatus}</p>` : ""}<div class="workspace" ?inert=${this.baking}><aside class="tools"><h3>${icon("image", 15)} 素材パレット</h3><asset-palette .selected=${map?.layers.find((l) => l.id === this.layerId)?.tileset?.assetId || this.assetId} @pick-asset=${(e: CustomEvent<StoredFile>) => this.pickAsset(e.detail)}></asset-palette>${map ? this.tilesetControls() : ""}${character ? html`<button style="margin-top:14px;width:100%" class="small" ?disabled=${!this.assetId} @click=${() => (character.layers.length ? this.addLayer() : this.useBase())}>${icon("plus", 13)}${character.layers.length ? "レイヤーに追加" : "ベース画像にする"}</button>` : ""}<p class="muted" style="font-size:10px;margin-top:16px">SVGは合成に使用できません。</p></aside>
-    <section class="stage"><div class="stage-head"><span>${map ? "ORTHOGONAL MAP" : "COMPOSITION"} · ${width} × ${height}</span><div class="stage-tools"><button aria-label="元に戻す" ?disabled=${!this.history.length} @click=${() => this.undo()}>↶</button><button aria-label="やり直す" ?disabled=${!this.redoHistory.length} @click=${() => this.undo(true)}>↷</button>${map ? html`<button class=${this.eraser ? "selected-tool" : ""} @click=${() => (this.eraser = !this.eraser)}>消しゴム</button><button class=${this.grid ? "selected-tool" : ""} @click=${() => (this.grid = !this.grid)}>グリッド</button>` : ""}<select aria-label="表示倍率" .value=${String(this.zoom)} @change=${(e: Event) => (this.zoom = Number((e.target as HTMLSelectElement).value))} style="padding:2px;font-size:10px">${[...new Set([0.25, 0.5, 1, 2, this.zoom])].sort((a, b) => a - b).map((z) => html`<option value=${z} .selected=${z === this.zoom}>${Math.round(z * 100)}%</option>`)}</select></div></div><div class="stage-body checker" @wheel=${this.wheelListener}><canvas tabindex="0" id="editor-canvas" aria-label=${map ? "マップ描画キャンバス" : "キャラクター合成プレビュー"} style=${`width:${width * this.zoom}px;height:${height * this.zoom}px;cursor:${character ? "move" : "crosshair"}`} @pointerdown=${(
-      e: PointerEvent,
-    ) => {
-      if (app.busy || e.button !== 0) return;
-      if (character) this.startDrag(e);
-      if (map) {
-        this.snapshot();
-        this.painting = true;
-        (e.currentTarget as HTMLCanvasElement).setPointerCapture(e.pointerId);
-        this.paint(e);
-      }
-    }} @pointermove=${(e: PointerEvent) => {
-      if (this.painting) this.paint(e);
-      this.moveDrag(e);
-    }} @pointerup=${() => this.endPointer()} @pointercancel=${() => this.endPointer()} @lostpointercapture=${() => this.endPointer()}></canvas></div><div class="stage-foot"><span>${map ? `${map.width} × ${map.height} セル · ${map.tileWidth} px タイル` : `${character?.layers.length} レイヤー`}</span><span>${map ? "素材を選んでドラッグで描画" : "ドラッグ・矢印: 移動 · ホイール: 表示倍率 · ＋／−: レイヤー倍率"}</span></div></section>
-    <aside class="tools inspector"><input class="project-name" placeholder="名前なし" aria-label="編集用JSON名" .value=${p.name} @input=${(
-      e: Event,
-    ) =>
-      this.edit(() => {
-        p.name = (e.target as HTMLInputElement).value;
-      })}><div class="row spread" style="margin-bottom:12px"><h3 style="margin:0">${icon("layers", 15)} レイヤー</h3>${map ? html`<button class="small quiet" aria-label="レイヤーを追加" @click=${() => this.addLayer()}>${icon("plus", 15)}</button>` : ""}</div><div class="layer-list">${[
-      ...p.layers,
-    ]
-      .reverse()
-      .map(
-        (layer) =>
-          html`<div class="layer ${layer.id === this.layerId ? "active" : ""}"><div class="row"><input type="checkbox" aria-label="レイヤー表示" .checked=${layer.visible} @change=${(
-            e: Event,
-          ) =>
-            this.edit(() => {
-              layer.visible = (e.target as HTMLInputElement).checked;
-            })}><button class="quiet small" style="flex:1;overflow:hidden;justify-content:flex-start" @click=${() => {
-            this.layerId = layer.id;
-            this.tileIndex = 0;
-          }}>${"name" in layer ? layer.name : app.files.find((f) => f.assetId === layer.assetId)?.name || "素材が見つかりません"}</button></div></div>`,
-      )}</div><div class="mini-actions"><button aria-label="レイヤーを上へ" @click=${() => this.moveLayer(1)}>↑</button><button aria-label="レイヤーを下へ" @click=${() => this.moveLayer(-1)}>↓</button><button class="danger" ?disabled=${!selectedLayer || (!!map && map.layers.length <= 1)} @click=${() => this.removeLayer()}>削除</button></div>
-    ${
-      selectedLayer
-        ? html`${
-            "name" in selectedLayer
-              ? html`<label>レイヤー名<input .value=${selectedLayer.name} @change=${(
-                  e: Event,
-                ) =>
-                  this.edit(() => {
-                    selectedLayer.name = (e.target as HTMLInputElement).value;
-                  })}></label><label class="check"><input type="checkbox" .checked=${selectedLayer.locked} @change=${(
-                  e: Event,
-                ) =>
-                  this.edit(() => {
-                    selectedLayer.locked = (
-                      e.target as HTMLInputElement
-                    ).checked;
-                  })}>編集をロック</label>`
-              : html`<label>参照する素材<select .value=${selectedLayer.assetId} @change=${(
-                  e: Event,
-                ) => {
-                  this.edit(() => {
-                    selectedLayer.assetId = (
-                      e.target as HTMLSelectElement
-                    ).value;
-                  });
-                  void this.loadImages();
-                }}><option value="">素材を選択</option>${rasters.map((f) => html`<option value=${f.assetId} .selected=${f.assetId === selectedLayer.assetId}>${f.name}</option>`)}</select></label><label class="check"><input type="checkbox" .checked=${this.aspectLocked} @change=${(e: Event) => (this.aspectLocked = (e.target as HTMLInputElement).checked)}>縦横比を維持</label><div class="fields">${(
-                  [
-                    ["x", "X座標"],
-                    ["y", "Y座標"],
-                    ["scaleX", "横倍率"],
-                    ["scaleY", "縦倍率"],
-                    ["rotation", "回転 (°)"],
-                  ] as const
-                ).map(
-                  ([key, label]) =>
-                    html`<label>${label}<input type="number" step=${key.startsWith("scale") ? 0.1 : 1} .value=${String((selectedLayer as CharacterLayer)[key])} @change=${(
-                      e: Event,
-                    ) => {
-                      const value = Number(
-                        (e.target as HTMLInputElement).value,
-                      );
-                      if (
-                        Number.isFinite(value) &&
-                        (!key.startsWith("scale") ||
-                          (value >= 0.01 && value <= 100))
-                      )
-                        this.edit(() => {
-                          const layer = selectedLayer as CharacterLayer;
-                          if (
-                            this.aspectLocked &&
-                            (key === "scaleX" || key === "scaleY")
-                          ) {
-                            const other =
-                              key === "scaleX" ? "scaleY" : "scaleX";
-                            const next = (layer[other] * value) / layer[key];
-                            if (next < 0.01 || next > 100) return;
-                            layer[other] = next;
-                          }
-                          layer[key] = value;
-                        });
-                    }}></label>`,
-                )}</div>`
-          }<label>不透明度 ${Math.round(selectedLayer.opacity * 100)}%<input type="range" min="0" max="1" step="0.05" .value=${String(selectedLayer.opacity)} @change=${(
-            e: Event,
-          ) =>
-            this.edit(() => {
-              selectedLayer.opacity = Number(
-                (e.target as HTMLInputElement).value,
-              );
-            })}></label>`
-        : html`<p class="muted" style="font-size:11px">画像を選び、レイヤーに追加してください。</p>`
-    }
-    <hr class="divider"><button class="quiet small" style="margin-top:12px" @click=${() => (this.showNew = !this.showNew)}>キャンバス設定 ${this.showNew ? "−" : "＋"}</button>${
-      this.showNew
-        ? html`<div class="fields" style="margin-top:12px">${(
-            map
-              ? [
-                  ["width", "横セル数"],
-                  ["height", "縦セル数"],
-                  ["tileWidth", "タイル幅"],
-                  ["tileHeight", "タイル高さ"],
-                ]
-              : [
-                  ["width", "幅 px"],
-                  ["height", "高さ px"],
-                ]
-          ).map(
-            ([key, label]) =>
-              html`<label>${label}<input type="number" min="1" max=${map ? 128 : 4096} .value=${String(map ? map[key as "width"] : character?.canvas[key as "width"])} @change=${(
-                e: Event,
-              ) => {
-                const n = Number((e.target as HTMLInputElement).value);
-                if (!Number.isInteger(n) || n < 1 || n > (map ? 128 : 4096))
-                  return;
+    const missing = referenceIds(p).filter((id) => !app.files.some((f) => f.assetId === id));
+    const width = map ? map.width * map.tileWidth : character?.canvas.width || 512;
+    const height = map ? map.height * map.tileHeight : character?.canvas.height || 512;
+    return html`<div class="page-head">
+        <div>
+          <div class="eyebrow" style="margin-bottom:7px">
+            ${map ? "MAKE ROOM FOR ADVENTURE" : "BRING YOUR CHARACTERS TO LIFE"}
+          </div>
+          <h1>${map ? "マップエディター" : "キャラクター合成"}</h1>
+          <p>
+            ${map ? "タイルを並べて、冒険の舞台を描こう。" : "レイヤーを重ねて、表情と個性をつくろう。"}
+          </p>
+        </div>
+        <div class="row">
+          <button ?disabled=${app.busy} @click=${() => this.newProject()}>
+            ${icon("plus", 15)}新規作成</button
+          ><button
+            class="primary"
+            ?disabled=${app.busy || !storage.connected}
+            @click=${() => this.save()}
+          >
+            ${icon("cloud", 16)}保存する</button
+          ><button ?disabled=${app.busy || !storage.connected} @click=${() => this.save(true)}>
+            別名で保存する
+          </button>
+        </div>
+      </div>
+      <div class="toolbar" ?inert=${this.baking}>
+        <select
+          aria-label="開く"
+          class="project-menu"
+          @change=${(e: Event) => {
+            void this.open((e.target as HTMLSelectElement).value);
+            (e.target as HTMLSelectElement).value = "";
+          }}
+        >
+          <option value="">開く…</option>
+          ${this.projects.map((project) => html`<option value=${project.id}>${project.name}${project.dirty ? " · 下書き" : ""}</option>`)}</select
+        ><button
+          class="small"
+          @click=${() => this.renderRoot.querySelector<HTMLInputElement>("#json-import")?.click()}
+        >
+          インポート</button
+        ><input
+          id="json-import"
+          class="sr-only"
+          type="file"
+          accept=".json,application/json"
+          @change=${(e: Event) => {
+            const input = e.target as HTMLInputElement;
+            void this.importJson(input.files?.[0]);
+            input.value = "";
+          }}
+        /><button class="small" title="端末へダウンロード" @click=${() => this.exportJson()}>
+          ${icon("download", 13)}エクスポート</button
+        >${character ? html`<button class="small" ?disabled=${app.busy || !storage.connected || !character.layers.length} @click=${() => this.exportPng()}>合成PNGをストレージへ</button><button class="small" ?disabled=${app.busy || !storage.connected || !character.layers.length} @click=${() => this.bakeLayers()}>元素材を切り出して上書き</button>` : ""}<span
+          class="draft-label"
+          role="status"
+          >${this.saved}</span
+        >
+      </div>
+      ${missing.length ? html`<div class="notice error" style="margin-bottom:16px">${missing.length}件の素材が見つかりません。${map ? "編集と保存を続けられます。各レイヤーの素材パレットで差し替えできます。" : "レイヤーの素材を差し替えるか削除してください。"}</div>` : ""}
+      ${this.bakeStatus ? html`<p class="notice" role="status">${this.bakeStatus}</p>` : ""}
+      <div class="workspace" ?inert=${this.baking}>
+        <aside class="tools">
+          <h3>${icon("image", 15)} 素材パレット</h3>
+          <asset-palette
+            .selected=${map?.layers.find((l) => l.id === this.layerId)?.tileset?.assetId || this.assetId}
+            @pick-asset=${(e: CustomEvent<StoredFile>) => this.pickAsset(e.detail)}
+          ></asset-palette
+          >${map ? this.tilesetControls() : ""}${character ? html`<button style="margin-top:14px;width:100%" class="small" ?disabled=${!this.assetId} @click=${() => (character.layers.length ? this.addLayer() : this.useBase())}>${icon("plus", 13)}${character.layers.length ? "レイヤーに追加" : "ベース画像にする"}</button>` : ""}
+          <p class="muted" style="font-size:10px;margin-top:16px">SVGは合成に使用できません。</p>
+        </aside>
+        <section class="stage">
+          <div class="stage-head">
+            <span>${map ? "ORTHOGONAL MAP" : "COMPOSITION"} · ${width} × ${height}</span>
+            <div class="stage-tools">
+              <button
+                aria-label="元に戻す"
+                ?disabled=${!this.history.length}
+                @click=${() => this.undo()}
+              >
+                ↶</button
+              ><button
+                aria-label="やり直す"
+                ?disabled=${!this.redoHistory.length}
+                @click=${() => this.undo(true)}
+              >
+                ↷</button
+              >${map ? html`<button class=${this.eraser ? "selected-tool" : ""} @click=${() => (this.eraser = !this.eraser)}>消しゴム</button><button class=${this.grid ? "selected-tool" : ""} @click=${() => (this.grid = !this.grid)}>グリッド</button>` : ""}<select
+                aria-label="表示倍率"
+                .value=${String(this.zoom)}
+                @change=${(e: Event) => (this.zoom = Number((e.target as HTMLSelectElement).value))}
+                style="padding:2px;font-size:10px"
+              >
+                ${[...new Set([0.25, 0.5, 1, 2, this.zoom])].sort((a, b) => a - b).map((z) => html`<option value=${z} .selected=${z === this.zoom}>${Math.round(z * 100)}%</option>`)}
+              </select>
+            </div>
+          </div>
+          <div class="stage-body checker" @wheel=${this.wheelListener}>
+            <canvas
+              tabindex="0"
+              id="editor-canvas"
+              aria-label=${map ? "マップ描画キャンバス" : "キャラクター合成プレビュー"}
+              style=${`width:${width * this.zoom}px;height:${height * this.zoom}px;cursor:${character ? "move" : "crosshair"}`}
+              @pointerdown=${(e: PointerEvent) => {
+                if (app.busy || e.button !== 0) return;
+                if (character) this.startDrag(e);
                 if (map) {
-                  const proposed = { ...map, [key]: n };
-                  if (
-                    proposed.width *
-                      proposed.height *
-                      proposed.tileWidth *
-                      proposed.tileHeight >
-                    16_777_216
-                  ) {
-                    app.error =
-                      "キャンバスは合計16,777,216画素以下にしてください。";
-                    app.changed();
-                    return;
-                  }
+                  this.snapshot();
+                  this.painting = true;
+                  (e.currentTarget as HTMLCanvasElement).setPointerCapture(e.pointerId);
+                  this.paint(e);
                 }
-                this.edit(() => {
-                  if (map) {
-                    const oldWidth = map.width,
-                      oldHeight = map.height;
-                    map[key as "width"] = n;
-                    for (const layer of map.layers) {
-                      const old = layer.cells;
-                      layer.cells = Array.from(
-                        { length: map.width * map.height },
-                        (_, i) => {
-                          const x = i % map.width,
-                            y = Math.floor(i / map.width);
-                          return x < oldWidth && y < oldHeight
-                            ? old[y * oldWidth + x]
-                            : -1;
-                        },
-                      );
-                    }
-                  } else if (character) character.canvas[key as "width"] = n;
-                });
-              }}></label>`,
-          )}</div>`
-        : ""
-    }</aside></div>
-    ${
-      map?.tilesets.length
-        ? html`<div class="panel stack" style="margin-top:16px"><h3>マップの素材参照</h3>${map.tilesets.map(
-            (ref, index) =>
-              html`<div class="row"><span class="muted" style="font-size:11px;min-width:55px">#${index + 1}</span><select aria-label=${`素材参照 ${index + 1}`} .value=${ref.assetId} @change=${(
-                e: Event,
-              ) => {
-                this.edit(() => {
-                  ref.assetId = (e.target as HTMLSelectElement).value;
-                });
-                void this.loadImages();
-              }}><option value="">素材が見つかりません</option>${rasters.map((f) => html`<option value=${f.assetId} .selected=${f.assetId === ref.assetId}>${f.name}</option>`)}</select><button class="small" @click=${() =>
-                this.edit(() => {
-                  for (const layer of map.layers.filter((l) => !l.tileset))
-                    layer.cells = layer.cells.map((c) =>
-                      c === index ? -1 : c > index ? c - 1 : c,
-                    );
-                  map.tilesets.splice(index, 1);
-                })}>参照解除</button></div>`,
-          )}</div>`
-        : ""
-    }`;
+              }}
+              @pointermove=${(e: PointerEvent) => {
+                if (this.painting) this.paint(e);
+                this.moveDrag(e);
+              }}
+              @pointerup=${() => this.endPointer()}
+              @pointercancel=${() => this.endPointer()}
+              @lostpointercapture=${() => this.endPointer()}
+            ></canvas>
+          </div>
+          <div class="stage-foot">
+            <span
+              >${map ? `${map.width} × ${map.height} セル · ${map.tileWidth} px タイル` : `${character?.layers.length} レイヤー`}</span
+            ><span
+              >${map ? "素材を選んでドラッグで描画" : "ドラッグ・矢印: 移動 · ホイール: 表示倍率 · ＋／−: レイヤー倍率"}</span
+            >
+          </div>
+        </section>
+        <aside class="tools inspector">
+          <input
+            class="project-name"
+            placeholder="名前なし"
+            aria-label="編集用JSON名"
+            .value=${p.name}
+            @input=${(e: Event) =>
+              this.edit(() => {
+                p.name = (e.target as HTMLInputElement).value;
+              })}
+          />
+          <div class="row spread" style="margin-bottom:12px">
+            <h3 style="margin:0">${icon("layers", 15)} レイヤー</h3>
+            ${map ? html`<button class="small quiet" aria-label="レイヤーを追加" @click=${() => this.addLayer()}>${icon("plus", 15)}</button>` : ""}
+          </div>
+          <div class="layer-list">
+            ${[...p.layers].reverse().map(
+              (layer) =>
+                html`<div class="layer ${layer.id === this.layerId ? "active" : ""}">
+                  <div class="row">
+                    <input
+                      type="checkbox"
+                      aria-label="レイヤー表示"
+                      .checked=${layer.visible}
+                      @change=${(e: Event) =>
+                        this.edit(() => {
+                          layer.visible = (e.target as HTMLInputElement).checked;
+                        })}
+                    /><button
+                      class="quiet small"
+                      style="flex:1;overflow:hidden;justify-content:flex-start"
+                      @click=${() => {
+                        this.layerId = layer.id;
+                        this.tileIndex = 0;
+                      }}
+                    >
+                      ${"name" in layer ? layer.name : app.files.find((f) => f.assetId === layer.assetId)?.name || "素材が見つかりません"}
+                    </button>
+                  </div>
+                </div>`,
+            )}
+          </div>
+          <div class="mini-actions">
+            <button aria-label="レイヤーを上へ" @click=${() => this.moveLayer(1)}>↑</button
+            ><button aria-label="レイヤーを下へ" @click=${() => this.moveLayer(-1)}>↓</button
+            ><button
+              class="danger"
+              ?disabled=${!selectedLayer || (!!map && map.layers.length <= 1)}
+              @click=${() => this.removeLayer()}
+            >
+              削除
+            </button>
+          </div>
+          ${
+            selectedLayer
+              ? html`${
+                    "name" in selectedLayer
+                      ? html`<label
+                            >レイヤー名<input
+                              .value=${selectedLayer.name}
+                              @change=${(e: Event) =>
+                                this.edit(() => {
+                                  selectedLayer.name = (e.target as HTMLInputElement).value;
+                                })} /></label
+                          ><label class="check"
+                            ><input
+                              type="checkbox"
+                              .checked=${selectedLayer.locked}
+                              @change=${(e: Event) =>
+                                this.edit(() => {
+                                  selectedLayer.locked = (e.target as HTMLInputElement).checked;
+                                })}
+                            />編集をロック</label
+                          >`
+                      : html`<label
+                            >参照する素材<select
+                              .value=${selectedLayer.assetId}
+                              @change=${(e: Event) => {
+                                this.edit(() => {
+                                  selectedLayer.assetId = (e.target as HTMLSelectElement).value;
+                                });
+                                void this.loadImages();
+                              }}
+                            >
+                              <option value="">素材を選択</option>
+                              ${rasters.map((f) => html`<option value=${f.assetId} .selected=${f.assetId === selectedLayer.assetId}>${f.name}</option>`)}
+                            </select></label
+                          ><label class="check"
+                            ><input
+                              type="checkbox"
+                              .checked=${this.aspectLocked}
+                              @change=${(e: Event) => (this.aspectLocked = (e.target as HTMLInputElement).checked)}
+                            />縦横比を維持</label
+                          >
+                          <div class="fields">
+                            ${(
+                              [
+                                ["x", "X座標"],
+                                ["y", "Y座標"],
+                                ["scaleX", "横倍率"],
+                                ["scaleY", "縦倍率"],
+                                ["rotation", "回転 (°)"],
+                              ] as const
+                            ).map(
+                              ([key, label]) =>
+                                html`<label
+                                  >${label}<input
+                                    type="number"
+                                    step=${key.startsWith("scale") ? 0.1 : 1}
+                                    .value=${String((selectedLayer as CharacterLayer)[key])}
+                                    @change=${(e: Event) => {
+                                      const value = Number((e.target as HTMLInputElement).value);
+                                      if (
+                                        Number.isFinite(value) &&
+                                        (!key.startsWith("scale") ||
+                                          (value >= 0.01 && value <= 100))
+                                      )
+                                        this.edit(() => {
+                                          const layer = selectedLayer as CharacterLayer;
+                                          if (
+                                            this.aspectLocked &&
+                                            (key === "scaleX" || key === "scaleY")
+                                          ) {
+                                            const other = key === "scaleX" ? "scaleY" : "scaleX";
+                                            const next = (layer[other] * value) / layer[key];
+                                            if (next < 0.01 || next > 100) return;
+                                            layer[other] = next;
+                                          }
+                                          layer[key] = value;
+                                        });
+                                    }}
+                                /></label>`,
+                            )}
+                          </div>`
+                  }<label
+                    >不透明度 ${Math.round(selectedLayer.opacity * 100)}%<input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      .value=${String(selectedLayer.opacity)}
+                      @change=${(e: Event) =>
+                        this.edit(() => {
+                          selectedLayer.opacity = Number((e.target as HTMLInputElement).value);
+                        })}
+                  /></label>`
+              : html`<p class="muted" style="font-size:11px">
+                  画像を選び、レイヤーに追加してください。
+                </p>`
+          }
+          <hr class="divider" />
+          <button
+            class="quiet small"
+            style="margin-top:12px"
+            @click=${() => (this.showNew = !this.showNew)}
+          >
+            キャンバス設定 ${this.showNew ? "−" : "＋"}</button
+          >${
+            this.showNew
+              ? html`<div class="fields" style="margin-top:12px">
+                  ${(map
+                    ? [
+                        ["width", "横セル数"],
+                        ["height", "縦セル数"],
+                        ["tileWidth", "タイル幅"],
+                        ["tileHeight", "タイル高さ"],
+                      ]
+                    : [
+                        ["width", "幅 px"],
+                        ["height", "高さ px"],
+                      ]
+                  ).map(
+                    ([key, label]) =>
+                      html`<label
+                        >${label}<input
+                          type="number"
+                          min="1"
+                          max=${map ? 128 : 4096}
+                          .value=${String(map ? map[key as "width"] : character?.canvas[key as "width"])}
+                          @change=${(e: Event) => {
+                            const n = Number((e.target as HTMLInputElement).value);
+                            if (!Number.isInteger(n) || n < 1 || n > (map ? 128 : 4096)) return;
+                            if (map) {
+                              const proposed = { ...map, [key]: n };
+                              if (
+                                proposed.width *
+                                  proposed.height *
+                                  proposed.tileWidth *
+                                  proposed.tileHeight >
+                                16_777_216
+                              ) {
+                                app.error = "キャンバスは合計16,777,216画素以下にしてください。";
+                                app.changed();
+                                return;
+                              }
+                            }
+                            this.edit(() => {
+                              if (map) {
+                                const oldWidth = map.width,
+                                  oldHeight = map.height;
+                                map[key as "width"] = n;
+                                for (const layer of map.layers) {
+                                  const old = layer.cells;
+                                  layer.cells = Array.from(
+                                    { length: map.width * map.height },
+                                    (_, i) => {
+                                      const x = i % map.width,
+                                        y = Math.floor(i / map.width);
+                                      return x < oldWidth && y < oldHeight
+                                        ? old[y * oldWidth + x]
+                                        : -1;
+                                    },
+                                  );
+                                }
+                              } else if (character) character.canvas[key as "width"] = n;
+                            });
+                          }}
+                      /></label>`,
+                  )}
+                </div>`
+              : ""
+          }
+        </aside>
+      </div>
+      ${
+        map?.tilesets.length
+          ? html`<div class="panel stack" style="margin-top:16px">
+              <h3>マップの素材参照</h3>
+              ${map.tilesets.map(
+                (ref, index) =>
+                  html`<div class="row">
+                    <span class="muted" style="font-size:11px;min-width:55px">#${index + 1}</span
+                    ><select
+                      aria-label=${`素材参照 ${index + 1}`}
+                      .value=${ref.assetId}
+                      @change=${(e: Event) => {
+                        this.edit(() => {
+                          ref.assetId = (e.target as HTMLSelectElement).value;
+                        });
+                        void this.loadImages();
+                      }}
+                    >
+                      <option value="">素材が見つかりません</option>
+                      ${rasters.map((f) => html`<option value=${f.assetId} .selected=${f.assetId === ref.assetId}>${f.name}</option>`)}</select
+                    ><button
+                      class="small"
+                      @click=${() =>
+                        this.edit(() => {
+                          for (const layer of map.layers.filter((l) => !l.tileset))
+                            layer.cells = layer.cells.map((c) =>
+                              c === index ? -1 : c > index ? c - 1 : c,
+                            );
+                          map.tilesets.splice(index, 1);
+                        })}
+                    >
+                      参照解除
+                    </button>
+                  </div>`,
+              )}
+            </div>`
+          : ""
+      }`;
   }
 }
 customElements.define("editor-page", EditorPage);

@@ -12,15 +12,7 @@ const required = Object.keys(base);
 export const schemas = {
   map: {
     type: "object",
-    required: [
-      ...required,
-      "width",
-      "height",
-      "tileWidth",
-      "tileHeight",
-      "layers",
-      "tilesets",
-    ],
+    required: [...required, "width", "height", "tileWidth", "tileHeight", "layers", "tilesets"],
     properties: {
       ...base,
       width: positive,

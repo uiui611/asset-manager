@@ -31,17 +31,12 @@ export async function notifyDeployment({
   if (!response.ok) throw new Error("Deployment webhook rejected the request");
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
-) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     await notifyDeployment();
   } catch {
     // Fetch errors and response bodies may contain credentials; keep the warning generic.
-    console.log(
-      "::warning::Deployment notification failed. The image is already published.",
-    );
+    console.log("::warning::Deployment notification failed. The image is already published.");
     process.exitCode = 1;
   }
 }

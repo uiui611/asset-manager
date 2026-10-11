@@ -16,14 +16,10 @@ export class AssetSearch {
       }
   }
   find(query = "", type = "", tag = "") {
-    const results = query.trim()
-      ? this.fuse.search(query).map((x) => x.item)
-      : this.files;
+    const results = query.trim() ? this.fuse.search(query).map((x) => x.item) : this.files;
     return results.filter(
       (f) =>
-        (!type ||
-          f.type === type ||
-          (type === "audio" && f.tagIds.includes("editor-sound"))) &&
+        (!type || f.type === type || (type === "audio" && f.tagIds.includes("editor-sound"))) &&
         (!tag || this.tags.get(tag)?.has(f.assetId)),
     );
   }

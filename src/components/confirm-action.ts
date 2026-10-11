@@ -1,8 +1,4 @@
-export function confirmAction(
-  title: string,
-  message: string,
-  action: string,
-): Promise<boolean> {
+export function confirmAction(title: string, message: string, action: string): Promise<boolean> {
   const dialog = document.createElement("dialog");
   dialog.setAttribute("aria-label", title);
   dialog.style.cssText =
