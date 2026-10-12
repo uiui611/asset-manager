@@ -13,6 +13,7 @@ import {
   type Tag,
   uid,
 } from "../domain/models";
+import { tagName } from "../domain/tags";
 import { validateProject } from "../schemas/projects";
 import { HttpAssetStorage } from "../storage/http-asset-storage";
 import { Limiter } from "./limiter";
@@ -155,10 +156,10 @@ export class AssetService extends EventTarget {
   }
   async createTag(name: string) {
     this.requireConnected();
-    if (!name.trim()) throw new Error("タグ名を入力してください。");
-    if (this.tags.some((t) => t.name === name.trim()))
-      throw new Error("同じ名前のタグがあります。");
-    const tag = await storage.createTag(name.trim());
+    const normalized = tagName(name);
+    const existing = this.tags.find((t) => t.name === normalized);
+    if (existing) return existing;
+    const tag = await storage.createTag(normalized);
     await db.tags.put(tag);
     await this.refresh();
     return tag;

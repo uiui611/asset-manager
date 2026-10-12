@@ -1,9 +1,10 @@
 import { css, html, LitElement } from "lit";
 import { app, storage } from "../application/asset-service";
-import { isRaster, type StoredFile } from "../domain/models";
+import { isRaster, type StoredFile, type Tag } from "../domain/models";
 import { AssetSearch } from "../domain/search";
 import { shared } from "./styles";
 import "./asset-thumbnail";
+import "./tag-combobox";
 export class AssetPalette extends LitElement {
   static properties = {
     selected: { type: String },
@@ -68,6 +69,7 @@ export class AssetPalette extends LitElement {
   tag = "";
   sort = "newest";
   private files: StoredFile[] = [];
+  private tags: Tag[] = [];
   private search = new AssetSearch([]);
   private change = () => this.requestUpdate();
   connectedCallback() {
@@ -79,9 +81,10 @@ export class AssetPalette extends LitElement {
     app.removeEventListener("change", this.change);
   }
   render() {
-    if (this.files !== app.files) {
+    if (this.files !== app.files || this.tags !== app.tags) {
       this.files = app.files;
-      this.search = new AssetSearch(this.files.filter(isRaster));
+      this.tags = app.tags;
+      this.search = new AssetSearch(this.files.filter(isRaster), app.tags);
     }
     const files = this.search
       .find(this.query, "", this.tag)
@@ -93,16 +96,16 @@ export class AssetPalette extends LitElement {
     return html`<div class="filters">
         <input
           aria-label="パレットを検索"
-          placeholder="名前や説明で検索…"
+          placeholder="名前・説明・タグで検索…"
           .value=${this.query}
           @input=${(e: Event) => (this.query = (e.target as HTMLInputElement).value)}
-        /><select
-          aria-label="パレットのタグ"
-          .value=${this.tag}
-          @change=${(e: Event) => (this.tag = (e.target as HTMLSelectElement).value)}
-        >
-          <option value="">すべてのタグ</option>
-          ${app.tags.map((t) => html`<option value=${t.tagId}>${t.name}</option>`)}</select
+        /><tag-combobox
+          label="パレットのタグ"
+          .selected=${this.tag ? [this.tag] : []}
+          @tag-change=${(e: CustomEvent<string[]>) => {
+            this.tag = e.detail[0] || "";
+          }}
+        ></tag-combobox
         ><select
           aria-label="パレットの並び順"
           .value=${this.sort}
