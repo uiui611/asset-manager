@@ -207,13 +207,21 @@ export class SettingsPage extends LitElement {
         });
       }
       const tags = new Map(app.tags.map((t) => [t.tagId, t]));
+      const restoredIds = new Map<string, string>();
       for (const t of manifest.tags) {
         if (tags.has(t.tagId) && tags.get(t.tagId)?.name !== t.name)
           throw new Error(`タグID ${t.tagId} に異なる定義があります。`);
         tags.set(t.tagId, t);
       }
-      for (const tag of tags.values()) await storage.createTag(tag.name);
-      await db.tags.bulkPut([...tags.values()]);
+      for (const tag of tags.values()) {
+        const stored = await storage.createTag(tag.name);
+        restoredIds.set(tag.tagId, stored.tagId);
+        await db.tags.put(stored);
+      }
+      for (const item of items)
+        item.metadata.tagIds = [
+          ...new Set(item.metadata.tagIds.map((id) => restoredIds.get(id) || id)),
+        ];
       await app.startOperation("bulk-tag", items);
       this.manifest = null;
       this.message = "素材の名前・説明・タグを復元しました。";
@@ -278,7 +286,8 @@ export class SettingsPage extends LitElement {
               </button>
             </div>
             <p class="setting-note" style="margin-top:12px">
-              タグ定義はストレージへ保存されます。素材ごとに最大50個まで付けられます。
+              既定タグとユーザー定義タグを利用できます。素材の詳細・一括追加の入力欄からも作成できます。
+              タグ名は100バイト、素材ごとに最大50個まで。タグ定義はストレージへ保存されます。
             </p>
           </section>
           <section class="panel">

@@ -99,10 +99,11 @@ test("tile composition rejects mismatched sizes, preserves sources by default, a
   await expect(page.getByRole("button", { name: "red.png の詳細", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "マップエディター", exact: true }).click();
   const palette = page.locator("asset-palette");
-  await palette.getByLabel("パレットのタグ").selectOption("nature");
-  await expect(palette.getByRole("button")).toHaveCount(1);
-  await expect(palette.getByRole("button")).toHaveText("green.png");
-  await palette.getByLabel("パレットのタグ").selectOption("");
+  await palette.getByRole("combobox", { name: "パレットのタグ", exact: true }).fill("自然");
+  await palette.getByRole("option", { name: "自然", exact: true }).click();
+  await expect(palette.locator(".list button")).toHaveCount(1);
+  await expect(palette.locator(".list button")).toHaveText("green.png");
+  await palette.getByRole("button", { name: "パレットのタグを解除", exact: true }).click();
   await palette.getByLabel("パレットを検索").fill("two-tiles");
   await expect(palette.getByRole("button")).toHaveCount(1);
   await palette.getByRole("button").click();

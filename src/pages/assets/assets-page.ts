@@ -1,6 +1,7 @@
 import "../../components/tile-composer";
 import "../../components/operation-progress";
 import "../../components/audio-row";
+import "../../components/tag-combobox";
 import { css, html, LitElement, nothing } from "lit";
 import { repeat } from "lit/directives/repeat.js";
 import { navigate } from "../../app/router";
@@ -11,7 +12,7 @@ import { DialogController } from "../../components/dialog-controller";
 import { icon } from "../../components/icon";
 import { shared } from "../../components/styles";
 import { isLibraryFile, projectLabel, projectPage } from "../../domain/library";
-import { type JournalItem, type StoredFile, uid } from "../../domain/models";
+import { type JournalItem, type StoredFile, type Tag, uid } from "../../domain/models";
 import { AssetSearch } from "../../domain/search";
 import "../../components/asset-card";
 import { formatSize } from "../../components/asset-card";
@@ -156,6 +157,10 @@ export class AssetsPage extends LitElement {
       .toolbar select {
         font-size: 11px;
         max-width: 160px;
+      }
+      .toolbar tag-combobox {
+        width: 220px;
+        font-size: 11px;
       }
       .results {
         font-size: 10px;
@@ -369,11 +374,13 @@ export class AssetsPage extends LitElement {
   };
   private search = new AssetSearch([]);
   private filesRef: StoredFile[] = [];
+  private tagsRef: Tag[] = [];
   private resize?: ResizeObserver;
   private change = () => {
-    if (this.filesRef !== app.files) {
+    if (this.filesRef !== app.files || this.tagsRef !== app.tags) {
       this.filesRef = app.files;
-      this.search = new AssetSearch(app.files.filter(isLibraryFile));
+      this.tagsRef = app.tags;
+      this.search = new AssetSearch(app.files.filter(isLibraryFile), app.tags);
       this.selected = new Set(
         [...this.selected].filter((id) => app.files.some((f) => f.assetId === id)),
       );
@@ -706,22 +713,20 @@ export class AssetsPage extends LitElement {
           <label class="search"
             >${icon("search", 16)}<input
               aria-label="素材を検索"
-              placeholder="名前や説明で検索…"
+              placeholder="名前・説明・タグで検索…"
               .value=${this.query}
               @input=${(e: Event) => {
                 this.query = (e.target as HTMLInputElement).value;
                 this.filter();
               }} /></label
-          ><select
-            aria-label="タグで絞り込み"
-            .value=${this.tag}
-            @change=${(e: Event) => {
-              this.tag = (e.target as HTMLSelectElement).value;
+          ><tag-combobox
+            label="タグで絞り込み"
+            .selected=${this.tag ? [this.tag] : []}
+            @tag-change=${(e: CustomEvent<string[]>) => {
+              this.tag = e.detail[0] || "";
               this.filter();
             }}
-          >
-            <option value="">すべてのタグ</option>
-            ${app.tags.map((t) => html`<option value=${t.tagId}>${t.name}</option>`)}</select
+          ></tag-combobox
           ><select
             aria-label="並び順"
             .value=${this.sort}
@@ -868,9 +873,16 @@ export class AssetsPage extends LitElement {
       }${this.modal ? this.renderDialog() : nothing}`;
   }
   private tagPicker() {
-    return html`<div class="row wrap">
-      ${app.tags.map((t) => html`<label class="check"><input type="checkbox" .checked=${this.draftTags.includes(t.tagId)} @change=${() => (this.draftTags = this.draftTags.includes(t.tagId) ? this.draftTags.filter((id) => id !== t.tagId) : [...this.draftTags, t.tagId])} />${t.name}</label>`)}${!app.tags.length ? html`<p class="muted">設定でタグを作成できます。</p>` : ""}
-    </div>`;
+    return html`<tag-combobox
+      label="素材のタグ"
+      .multiple=${true}
+      .allowCreate=${true}
+      .disabled=${app.busy || !storage.connected}
+      .selected=${this.draftTags}
+      @tag-change=${(e: CustomEvent<string[]>) => {
+        this.draftTags = e.detail;
+      }}
+    ></tag-combobox>`;
   }
   private renderDialog() {
     return html`<div
@@ -989,7 +1001,7 @@ export class AssetsPage extends LitElement {
                 <footer>
                   <button
                     class="primary"
-                    ?disabled=${app.busy || !this.draftTags.length}
+                    ?disabled=${app.busy || !storage.connected || !this.draftTags.length}
                     @click=${async () => {
                       const items = app.files
                         .filter((f) => this.selected.has(f.assetId))
