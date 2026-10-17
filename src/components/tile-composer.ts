@@ -1,6 +1,6 @@
 import { css, html, LitElement } from "lit";
-import { app } from "../application/asset-service";
-import { hashBlob } from "../application/media";
+import { app, storage } from "../application/asset-service";
+import { hashBlob, importRasterImage } from "../application/media";
 import { loadImage } from "../canvas/images";
 import { type StoredFile, uid } from "../domain/models";
 import { tileSheetLayout } from "../domain/tile-sheet";
@@ -19,6 +19,8 @@ export class TileComposer extends LitElement {
     error: { state: true },
     loading: { state: true },
     dimensions: { state: true },
+    importing: { state: true },
+    importError: { state: true },
   };
   static styles = [
     shared,
@@ -61,6 +63,46 @@ export class TileComposer extends LitElement {
       .notice {
         font-size: 12px;
       }
+      .imports {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 12px;
+        margin-bottom: 14px;
+        border: 1px dashed #9eb593;
+        border-radius: 8px;
+      }
+      .imports p {
+        font-size: 11px;
+        color: #7c8d70;
+      }
+      .local-images {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        max-height: 200px;
+        overflow: auto;
+      }
+      .local-images button {
+        justify-content: flex-start;
+        min-width: 0;
+        padding: 6px;
+      }
+      .local-images img {
+        width: 36px;
+        height: 36px;
+        object-fit: contain;
+        image-rendering: pixelated;
+      }
+      .local-images span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .local-images [aria-pressed="true"] {
+        border-color: #789769;
+        background: #edf3e4;
+      }
       @media (max-width: 700px) {
         .layout {
           grid-template-columns: 1fr;
@@ -77,6 +119,9 @@ export class TileComposer extends LitElement {
   error = "";
   loading = false;
   dimensions = "";
+  importing = false;
+  importError = "";
+  private localSources = new Map<string, { name: string; blob: Blob; preview: string }>();
   private blob?: Blob;
   private sourceVersions = new Map<string, string>();
   private generation = 0;
@@ -104,6 +149,8 @@ export class TileComposer extends LitElement {
     super.disconnectedCallback();
     this.generation++;
     URL.revokeObjectURL(this.preview);
+    for (const source of this.localSources.values()) URL.revokeObjectURL(source.preview);
+    this.localSources.clear();
     app.removeEventListener("change", this.change);
   }
   private close() {
@@ -111,15 +158,58 @@ export class TileComposer extends LitElement {
       this.dispatchEvent(new CustomEvent("close-composer", { bubbles: true, composed: true }));
   }
   private pick(file: StoredFile) {
-    if (app.busy) return;
-    this.selected = this.selected.includes(file.assetId)
-      ? this.selected.filter((id) => id !== file.assetId)
-      : [...this.selected, file.assetId];
+    this.toggle(file.assetId);
+  }
+  private toggle(id: string) {
+    if (app.busy || this.importing) return;
+    this.selected = this.selected.includes(id)
+      ? this.selected.filter((selected) => selected !== id)
+      : [...this.selected, id];
+    if (this.selected.every((selected) => this.localSources.has(selected)))
+      this.removeSources = false;
     void this.build();
+  }
+  private async importImages(files: File[]) {
+    if (app.busy || this.importing || !files.length) return;
+    this.importError = "";
+    if (this.localSources.size + files.length > 256 || this.selected.length + files.length > 256) {
+      this.importError = "一度に合成できる画像は256枚までです。";
+      return;
+    }
+    this.importing = true;
+    const cancellation = app.cancellationToken;
+    try {
+      const sources: { id: string; name: string; blob: Blob }[] = [];
+      for (const file of files) {
+        const blob = await importRasterImage(file);
+        if (!this.isConnected || cancellation !== app.cancellationToken) return;
+        sources.push({ id: uid(), name: file.name, blob });
+      }
+      for (const source of sources)
+        this.localSources.set(source.id, { ...source, preview: URL.createObjectURL(source.blob) });
+      this.selected = [...this.selected, ...sources.map((source) => source.id)];
+      void this.build();
+    } catch (error) {
+      if (this.isConnected && cancellation === app.cancellationToken)
+        this.importError = error instanceof Error ? error.message : String(error);
+    } finally {
+      this.importing = false;
+    }
+  }
+  private dragOver(event: DragEvent) {
+    if (!event.dataTransfer?.types.includes("Files")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = app.busy || this.importing ? "none" : "copy";
+  }
+  private dropImages(event: DragEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    void this.importImages([...(event.dataTransfer?.files || [])]);
   }
   private move(index: number, delta: number) {
     const next = index + delta;
-    if (next < 0 || next >= this.selected.length) return;
+    if (app.busy || this.importing || next < 0 || next >= this.selected.length) return;
     const selected = [...this.selected];
     [selected[index], selected[next]] = [selected[next], selected[index]];
     this.selected = selected;
@@ -141,10 +231,15 @@ export class TileComposer extends LitElement {
       if (this.selected.length > 256) throw new Error("一度に合成できる画像は256枚までです。");
       const images: HTMLImageElement[] = [];
       for (const id of this.selected) {
+        const local = this.localSources.get(id);
         const file = app.files.find((f) => f.assetId === id);
-        if (!file) throw new Error("選択した素材が見つかりません。");
-        versions.set(id, file.version);
-        const image = await loadImage(await app.blob(file));
+        let blob = local?.blob;
+        if (!blob) {
+          if (!file) throw new Error("選択した素材が見つかりません。");
+          versions.set(id, file.version);
+          blob = await app.blob(file);
+        }
+        const image = await loadImage(blob);
         if (!images.length)
           tileSheetLayout(
             Array.from({ length: this.selected.length }, () => ({
@@ -195,14 +290,23 @@ export class TileComposer extends LitElement {
     }
   }
   private async save() {
-    if (!this.blob || !this.name.trim() || app.busy) return;
+    if (
+      !this.blob ||
+      !this.name.trim() ||
+      app.busy ||
+      this.loading ||
+      this.importing ||
+      !storage.connected
+    )
+      return;
     const blob = this.blob,
       name = `${this.name.trim().replace(/\.png$/i, "")}.png`;
-    const sources = this.selected
+    const storedIds = this.selected.filter((id) => !this.localSources.has(id));
+    const sources = storedIds
       .map((id) => app.files.find((f) => f.assetId === id))
       .filter((f): f is StoredFile => !!f);
     if (
-      sources.length !== this.selected.length ||
+      sources.length !== storedIds.length ||
       sources.some((f) => this.sourceVersions.get(f.assetId) !== f.version)
     ) {
       this.error = "元素材が変更されました。画像を選び直してプレビューを更新してください。";
@@ -237,7 +341,7 @@ export class TileComposer extends LitElement {
       }
       // Destructive work starts only after the composite is durably saved.
       if (!this.isConnected || cancellation !== app.cancellationToken) return false;
-      if (remove) {
+      if (remove && sources.length) {
         const complete = await app.startOperation(
           "bulk-trash",
           sources.map((f) => ({
@@ -263,6 +367,14 @@ export class TileComposer extends LitElement {
   render() {
     return html`<div
       class="overlay"
+      @dragenter=${(event: DragEvent) => {
+        if (event.dataTransfer?.types.includes("Files")) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      }}
+      @dragover=${this.dragOver}
+      @drop=${this.dropImages}
       @keydown=${(e: KeyboardEvent) => {
         if (e.key === "Escape") this.close();
       }}
@@ -272,11 +384,45 @@ export class TileComposer extends LitElement {
           <h2>タイル合成</h2>
           <button aria-label="閉じる" ?disabled=${app.busy} @click=${() => this.close()}>×</button>
         </div>
-        <p>同じサイズの保存済み画像を、選択した順に左上から並べます。</p>
+        <p>同じサイズの画像を、選択した順に左上から並べます。端末の画像もインポートできます。</p>
         <operation-progress></operation-progress
         >${app.busy && !app.transfers.length ? html`<p role="status">合成画像を保存中…</p>` : ""}${app.error ? html`<p class="notice error" role="alert">${app.error}</p>` : ""}
         <div class="layout">
-          <div ?inert=${app.busy}>
+          <div ?inert=${app.busy || this.importing}>
+            <div class="imports">
+              <button
+                @click=${() => this.renderRoot.querySelector<HTMLInputElement>("#tile-import")?.click()}
+              >
+                インポート
+              </button>
+              <input
+                id="tile-import"
+                class="sr-only"
+                type="file"
+                multiple
+                accept="image/png,image/jpeg,image/webp,image/gif,image/bmp"
+                @change=${(event: Event) => {
+                  const input = event.target as HTMLInputElement;
+                  void this.importImages([...(input.files || [])]);
+                  input.value = "";
+                }}
+              />
+              <p class="sheet-note">
+                画像をこのダイアログにドロップしても追加できます。インポートした画像はブラウザー内で使用し、合成結果だけを保存します。
+              </p>
+              <div class="local-images">
+                ${[...this.localSources].map(
+                  ([id, source]) =>
+                    html`<button
+                      aria-label=${`${source.name}（インポート）`}
+                      aria-pressed=${this.selected.includes(id)}
+                      @click=${() => this.toggle(id)}
+                    >
+                      <img src=${source.preview} alt="" /><span>${source.name}</span>
+                    </button>`,
+                )}
+              </div>
+            </div>
             <asset-palette
               multiple
               .selection=${this.selected}
@@ -284,6 +430,8 @@ export class TileComposer extends LitElement {
             ></asset-palette>
           </div>
           <div class="stack">
+            ${this.importing ? html`<p role="status">画像をインポート中…</p>` : ""}
+            ${this.importError ? html`<p class="notice error" role="alert">${this.importError}</p>` : ""}
             <div class="row">
               <label
                 >列数<input
@@ -292,7 +440,7 @@ export class TileComposer extends LitElement {
                   min="1"
                   max="256"
                   .value=${String(this.columns)}
-                  ?disabled=${app.busy}
+                  ?disabled=${app.busy || this.importing}
                   @change=${(e: Event) => {
                     this.columns = Number((e.target as HTMLInputElement).value);
                     void this.build();
@@ -307,7 +455,7 @@ export class TileComposer extends LitElement {
               /></label>
             </div>
             <div class="chosen">
-              ${this.selected.map((id, i) => html`<div class="row"><span>${i + 1}. ${app.files.find((f) => f.assetId === id)?.name || "削除済み"}</span><button aria-label=${`${i + 1}番目を前へ`} ?disabled=${app.busy || i === 0} @click=${() => this.move(i, -1)}>↑</button><button aria-label=${`${i + 1}番目を後ろへ`} ?disabled=${app.busy || i === this.selected.length - 1} @click=${() => this.move(i, 1)}>↓</button></div>`)}
+              ${this.selected.map((id, i) => html`<div class="row"><span>${i + 1}. ${this.localSources.get(id)?.name || app.files.find((f) => f.assetId === id)?.name || "削除済み"}</span><button aria-label=${`${i + 1}番目を前へ`} ?disabled=${app.busy || this.importing || i === 0} @click=${() => this.move(i, -1)}>↑</button><button aria-label=${`${i + 1}番目を後ろへ`} ?disabled=${app.busy || this.importing || i === this.selected.length - 1} @click=${() => this.move(i, 1)}>↓</button><button aria-label=${`${i + 1}番目を選択解除`} ?disabled=${app.busy || this.importing} @click=${() => this.toggle(id)}>×</button></div>`)}
             </div>
             ${this.error ? html`<p class="notice error" role="alert">${this.error}</p>` : ""}
             <div class="preview checker">
@@ -319,17 +467,18 @@ export class TileComposer extends LitElement {
                 type="checkbox"
                 aria-label="保存後に元素材を削除"
                 .checked=${this.removeSources}
-                ?disabled=${app.busy}
+                ?disabled=${app.busy || !this.selected.some((id) => !this.localSources.has(id))}
                 @change=${(e: Event) => (this.removeSources = (e.target as HTMLInputElement).checked)}
               />保存後に元素材を削除</label
-            >${this.removeSources ? html`<p class="notice">合成画像の保存成功後、選択した元素材を削除します。既存マップやキャラクターからの参照は欠落します。</p>` : ""}${this.outputId ? html`<p class="notice">合成画像は保存済みです。未完了の削除は操作パネルから明示的に再試行できます。</p>` : ""}
+            >${this.removeSources ? html`<p class="notice">合成画像の保存成功後、選択した保存済みの元素材を削除します。端末の画像は削除しません。既存マップやキャラクターからの参照は欠落します。</p>` : ""}${this.outputId ? html`<p class="notice">合成画像は保存済みです。未完了の削除は操作パネルから明示的に再試行できます。</p>` : ""}
+            ${!storage.connected ? html`<p class="notice">ストレージに接続すると合成画像を保存できます。</p>` : ""}
           </div>
         </div>
         <footer>
           <button ?disabled=${app.busy} @click=${() => this.close()}>キャンセル</button
           ><button
             class="primary"
-            ?disabled=${app.busy || !!this.outputId || this.loading || !this.blob || !this.name.trim()}
+            ?disabled=${app.busy || !!this.outputId || this.loading || this.importing || !storage.connected || !this.blob || !this.name.trim()}
             @click=${() => this.save()}
           >
             合成画像を保存

@@ -2,8 +2,8 @@ import "../../components/asset-palette";
 import "../../components/tile-composer";
 import { css, html, LitElement, nothing } from "lit";
 import { live } from "lit/directives/live.js";
-import { app, storage } from "../../application/asset-service";
-import { validateImport } from "../../application/media";
+import { app } from "../../application/asset-service";
+import { importRasterImage } from "../../application/media";
 import { loadImage, tileRects } from "../../canvas/images";
 import "../../components/asset-thumbnail";
 import { icon } from "../../components/icon";
@@ -168,12 +168,26 @@ export class SpritesPage extends LitElement {
   private animation = 0;
   private lastTime = 0;
   private change = () => this.requestUpdate();
+  private dragOver = (event: DragEvent) => {
+    if (!event.dataTransfer?.types.includes("Files")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = this.showComposer ? "none" : "copy";
+  };
+  private dropFiles = (event: DragEvent) => {
+    if (!event.dataTransfer?.files.length) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (!this.showComposer) void this.importImage(event.dataTransfer.files[0]);
+  };
   private visibility = () => {
     if (document.hidden) this.pause();
   };
   connectedCallback() {
     super.connectedCallback();
     app.addEventListener("change", this.change);
+    this.addEventListener("dragover", this.dragOver);
+    this.addEventListener("drop", this.dropFiles);
     document.addEventListener("visibilitychange", this.visibility);
   }
   disconnectedCallback() {
@@ -182,6 +196,8 @@ export class SpritesPage extends LitElement {
     this.generation++;
     this.image = undefined;
     app.removeEventListener("change", this.change);
+    this.removeEventListener("dragover", this.dragOver);
+    this.removeEventListener("drop", this.dropFiles);
     document.removeEventListener("visibilitychange", this.visibility);
   }
   protected updated() {
@@ -192,16 +208,7 @@ export class SpritesPage extends LitElement {
   }
   private async importImage(file?: File) {
     if (!file) return;
-    await this.load(
-      async () => {
-        const result = await validateImport(file);
-        if (result.type !== "image" || result.blob.type === "image/svg+xml")
-          throw new Error("PNG・JPEG・WebPなどの画像を選んでください。");
-        return result.blob;
-      },
-      file.name,
-      "",
-    );
+    await this.load(() => importRasterImage(file), file.name, "");
   }
   private async load(getBlob: () => Promise<Blob>, name: string, id: string) {
     const generation = ++this.generation;
@@ -360,11 +367,7 @@ export class SpritesPage extends LitElement {
           <h1>スプライトシート再生</h1>
           <p>画像をコマに区切って、動きを確かめよう。</p>
         </div>
-        <button
-          ?disabled=${app.busy || !storage.connected}
-          @click=${() => (this.showComposer = true)}
-        >
-          タイル合成</button
+        <button ?disabled=${app.busy} @click=${() => (this.showComposer = true)}>タイル合成</button
         ><button
           @click=${() => this.renderRoot.querySelector<HTMLInputElement>("#sprite-import")?.click()}
         >
@@ -390,6 +393,7 @@ export class SpritesPage extends LitElement {
           ></asset-palette
           >${!images.length ? html`<p class="muted">素材ライブラリに画像を登録するか、端末からインポートしてください。</p>` : nothing}
           <p class="sheet-note">インポートした画像は再生確認だけに使い、サーバーへ登録しません。</p>
+          <p class="sheet-note">この画面に画像をドロップしてもインポートできます。</p>
         </aside>
         <section class="stack">
           <div class="panel stack">
