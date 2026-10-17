@@ -3,10 +3,10 @@ import { app, storage } from "../../application/asset-service";
 import { download, jsonBlob } from "../../application/media";
 import { DialogController } from "../../components/dialog-controller";
 import { icon } from "../../components/icon";
+import "../../components/operation-progress";
 import { shared } from "../../components/styles";
-import { db } from "../../database/db";
-import { encodeProperties } from "../../domain/metadata";
-import { now, type OperationJournal, type StoredFile, type Tag } from "../../domain/models";
+import { validateMetadata } from "../../domain/metadata";
+import { now, type StoredFile, type Tag } from "../../domain/models";
 
 interface Manifest {
   schemaVersion: 1;
@@ -21,11 +21,9 @@ export class SettingsPage extends LitElement {
   }
   static properties = {
     tagName: { state: true },
-    operations: { state: true },
     issues: { state: true },
     diagnosed: { state: true },
     message: { state: true },
-    confirmClear: { state: true },
     manifest: { state: true },
   };
   static styles = [
@@ -68,20 +66,6 @@ export class SettingsPage extends LitElement {
       .tag-list .tag {
         font-size: 11px;
         padding: 5px 10px;
-      }
-      .journal {
-        border-top: 1px solid #e4e9df;
-        padding: 13px 0;
-      }
-      .journal strong {
-        font-size: 12px;
-      }
-      .journal p {
-        font-size: 10px;
-        color: #8c9980;
-      }
-      .journal .row {
-        margin-top: 8px;
       }
       .settings p {
         font-size: 12px;
@@ -126,27 +110,18 @@ export class SettingsPage extends LitElement {
     `,
   ];
   tagName = "";
-  operations: OperationJournal[] = [];
   issues: string[] = [];
   diagnosed = false;
   message = "";
-  confirmClear = false;
   manifest: Manifest | null = null;
-  private change = () => {
-    this.requestUpdate();
-    void this.refresh();
-  };
+  private change = () => this.requestUpdate();
   connectedCallback() {
     super.connectedCallback();
     app.addEventListener("change", this.change);
-    void this.refresh();
   }
   disconnectedCallback() {
     super.disconnectedCallback();
     app.removeEventListener("change", this.change);
-  }
-  private async refresh() {
-    this.operations = (await db.operationJournal.toArray()).filter((o) => o.status !== "completed");
   }
   private async manifestExport() {
     await app.run(async () => {
@@ -176,7 +151,7 @@ export class SettingsPage extends LitElement {
           asset.tagIds.some((id: unknown) => typeof id !== "string")
         )
           throw new Error("素材メタデータが不正です。");
-        encodeProperties(asset);
+        validateMetadata(asset);
       }
       for (const tag of data.tags)
         if (typeof tag.tagId !== "string" || typeof tag.name !== "string")
@@ -189,9 +164,16 @@ export class SettingsPage extends LitElement {
     if (!manifest) return;
     await app.run(async () => {
       app.requireConnected();
+      const cancellation = app.cancellationToken;
+      const checkActive = () => {
+        if (cancellation !== app.cancellationToken)
+          throw new Error("マニフェストの復元を取り消しました。");
+      };
       const items = [];
       for (const asset of manifest.assets) {
-        const current = await storage.getMetadata(asset.fileId);
+        checkActive();
+        const current = await storage.getMetadata(asset.fileId, storage.writeSignal);
+        checkActive();
         if (current.assetId !== asset.assetId)
           throw new Error(`${asset.name}: 保存先の素材IDが一致しません。`);
         await app.putFile(current);
@@ -199,6 +181,7 @@ export class SettingsPage extends LitElement {
           id: asset.assetId,
           fileId: asset.fileId,
           name: asset.name,
+          expectedVersion: current.version,
           metadata: {
             name: asset.name,
             description: asset.description,
@@ -214,17 +197,23 @@ export class SettingsPage extends LitElement {
         tags.set(t.tagId, t);
       }
       for (const tag of tags.values()) {
-        const stored = await storage.createTag(tag.name);
+        checkActive();
+        const stored = await app.createTag(tag.name);
+        checkActive();
         restoredIds.set(tag.tagId, stored.tagId);
-        await db.tags.put(stored);
       }
       for (const item of items)
         item.metadata.tagIds = [
           ...new Set(item.metadata.tagIds.map((id) => restoredIds.get(id) || id)),
         ];
-      await app.startOperation("bulk-tag", items);
+      checkActive();
       this.manifest = null;
-      this.message = "素材の名前・説明・タグを復元しました。";
+      this.message = "復元を開始しました。進捗と結果は操作一覧で確認できます。";
+      const completed = await app.startOperation("bulk-tag", items);
+      checkActive();
+      this.message = completed
+        ? "素材の名前・説明・タグを復元しました。"
+        : "復元は完了していません。このページの操作結果を確認してください。";
     });
   }
   render() {
@@ -291,44 +280,12 @@ export class SettingsPage extends LitElement {
             </p>
           </section>
           <section class="panel">
-            <h2 class="section-title">${icon("refresh", 21)}中断した操作</h2>
-            ${
-              this.operations.length
-                ? this.operations.map(
-                    (o) => html`
-                      <div class="journal">
-                        <strong
-                          >${{ upload: "素材の登録", "tile-split": "タイル分割", "bulk-tag": "タグ・メタデータ更新", "bulk-trash": "削除" }[o.type]}</strong
-                        >
-                        <p>
-                          ${o.completedItems.length} /
-                          ${o.completedItems.length + o.pendingItems.length} 完了 · ${o.status}
-                        </p>
-                        ${o.error ? html` <p style="color:#ac6358">${o.error}</p> ` : ""}
-                        <div class="row">
-                          <button
-                            class="small"
-                            ?disabled=${app.busy || !storage.connected}
-                            @click=${() => app.run(() => app.resume(o.id))}
-                          >
-                            残りを再開
-                          </button>
-                          <button
-                            class="small quiet"
-                            ?disabled=${app.busy || app.uploads > 0}
-                            @click=${async () => {
-                              await db.operationJournal.delete(o.id);
-                              await this.refresh();
-                            }}
-                          >
-                            残りを取り消す
-                          </button>
-                        </div>
-                      </div>
-                    `,
-                  )
-                : html` <p class="muted">中断した操作はありません。</p> `
-            }
+            <h2 class="section-title">${icon("refresh", 21)}このページの操作</h2>
+            <p class="setting-note">
+              自動再試行は行いません。失敗や結果不明を確認し、必要な操作を選んでください。ページを閉じると未送信ファイルと操作記録は残りません。
+            </p>
+            <operation-progress></operation-progress>
+            ${!app.operations.some((operation) => operation.status !== "cancelled") ? html`<p class="muted">操作はありません。</p>` : nothing}
           </section>
         </div>
         <div class="stack">
@@ -387,22 +344,6 @@ export class SettingsPage extends LitElement {
                 : ""
             }
           </section>
-          <section class="panel stack">
-            <h2 class="section-title" style="margin:0">${icon("settings", 20)}ローカルデータ</h2>
-            <p class="muted">
-              一覧・サムネイルと中断したアップロードのキャッシュを消去します。ストレージ上のファイルは残ります。
-            </p>
-            <button
-              class="danger"
-              ?disabled=${app.busy || app.uploads > 0}
-              @click=${() => (this.confirmClear = true)}
-            >
-              ローカルデータを消去…
-            </button>
-            <p class="setting-note">
-              まずマニフェストを書き出してください。次の接続時にストレージから一覧を再構築します。
-            </p>
-          </section>
           <section class="notice">
             <strong>保存形式について</strong>
             <p style="margin-top:7px">
@@ -411,43 +352,6 @@ export class SettingsPage extends LitElement {
           </section>
         </div>
       </div>
-      ${
-        this.confirmClear
-          ? html`
-              <div class="overlay">
-                <section
-                  class="dialog"
-                  role="dialog"
-                  aria-modal="true"
-                  aria-label="ローカルデータの消去"
-                >
-                  <h2>ローカルキャッシュを消去します</h2>
-                  <p>
-                    このブラウザのキャッシュと中断したアップロードを消去します。サーバーに保存した素材は削除しません。
-                  </p>
-                  <footer>
-                    <button @click=${() => (this.confirmClear = false)}>キャンセル</button>
-                    <button
-                      class="danger"
-                      @click=${async () => {
-                        await app.run(async () => {
-                          storage.disconnect();
-                          await db.transaction("rw", db.tables, async () => {
-                            for (const table of db.tables) await table.clear();
-                          });
-                          this.confirmClear = false;
-                          this.message = "ローカルデータを消去しました。";
-                        });
-                      }}
-                    >
-                      キャッシュを消去
-                    </button>
-                  </footer>
-                </section>
-              </div>
-            `
-          : nothing
-      }
       ${
         this.manifest
           ? html`

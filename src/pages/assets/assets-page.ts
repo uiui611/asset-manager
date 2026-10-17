@@ -12,7 +12,7 @@ import { DialogController } from "../../components/dialog-controller";
 import { icon } from "../../components/icon";
 import { shared } from "../../components/styles";
 import { isLibraryFile, projectLabel, projectPage } from "../../domain/library";
-import { type JournalItem, type StoredFile, type Tag, uid } from "../../domain/models";
+import { type OperationItem, type StoredFile, type Tag, uid } from "../../domain/models";
 import { AssetSearch } from "../../domain/search";
 import "../../components/asset-card";
 import { formatSize } from "../../components/asset-card";
@@ -557,9 +557,12 @@ export class AssetsPage extends LitElement {
   private async saveTiles() {
     const file = this.detail;
     if (!file) return;
+    const cancellation = app.cancellationToken;
     const complete = await app.run(async () => {
-      const items: JournalItem[] = [];
+      const items: OperationItem[] = [];
       for (const tile of this.splitFiles) {
+        if (!this.isConnected || cancellation !== app.cancellationToken)
+          throw new DOMException("保存を取り消しました。", "AbortError");
         const id = uid();
         items.push({
           id,
@@ -574,6 +577,8 @@ export class AssetsPage extends LitElement {
           },
         });
       }
+      if (!this.isConnected || cancellation !== app.cancellationToken)
+        throw new DOMException("保存を取り消しました。", "AbortError");
       return app.startOperation("tile-split", items, [file.assetId]);
     });
     if (complete) this.close();
@@ -1010,6 +1015,7 @@ export class AssetsPage extends LitElement {
                           fileId: f.fileId,
                           name: f.name,
                           metadata: {
+                            version: f.version,
                             tagIds: [...new Set([...f.tagIds, ...this.draftTags])],
                           },
                         }));

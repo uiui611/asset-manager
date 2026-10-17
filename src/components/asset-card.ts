@@ -2,14 +2,13 @@ import { css, html, LitElement } from "lit";
 import { app } from "../application/asset-service";
 import { projectLabel, projectPage } from "../domain/library";
 import type { StoredFile } from "../domain/models";
+import { ThumbnailController } from "./asset-thumbnail";
 import { icon } from "./icon";
 import { shared } from "./styles";
 export class AssetCard extends LitElement {
   static properties = {
     file: { attribute: false },
     selected: { type: Boolean },
-    url: { state: true },
-    failed: { state: true },
   };
   static styles = [
     shared,
@@ -114,31 +113,11 @@ export class AssetCard extends LitElement {
   ];
   file!: StoredFile;
   selected = false;
-  url = "";
-  failed = false;
-  private generation = 0;
-  protected updated(changes: Map<string, unknown>) {
-    if (changes.has("file")) void this.load();
-  }
-  private async load() {
-    const generation = ++this.generation;
-    if (this.url) URL.revokeObjectURL(this.url);
-    this.url = "";
-    this.failed = false;
-    if (this.file.type !== "image" && projectPage(this.file) !== "characters") return;
-    try {
-      const blob = await app.thumb(this.file);
-      if (blob && this.isConnected && generation === this.generation)
-        this.url = URL.createObjectURL(blob);
-    } catch {
-      if (generation === this.generation) this.failed = true;
-    }
-  }
-  disconnectedCallback() {
-    super.disconnectedCallback();
-    this.generation++;
-    if (this.url) URL.revokeObjectURL(this.url);
-  }
+  private thumbnail = new ThumbnailController(
+    this,
+    () => this.file,
+    (file) => file.type === "image" || projectPage(file) === "characters",
+  );
   render() {
     const f = this.file;
     if (!f) return;
@@ -154,7 +133,7 @@ export class AssetCard extends LitElement {
         aria-label=${`${f.name} の詳細`}
         @click=${() => this.dispatchEvent(new CustomEvent("open-asset", { detail: f, bubbles: true, composed: true }))}
       >
-        ${this.url ? html`<img src=${this.url} alt=${f.name} />` : html`${icon(projectPage(f) === "maps" ? "map" : projectPage(f) === "characters" ? "character" : projectPage(f) === "sounds" || f.type === "audio" ? "sound" : f.type === "json" ? "code" : "image", 38)}<span class="loading">${projectPage(f) ? `${projectLabel(f)}JSON素材` : this.failed ? "プレビューを取得できません" : f.type === "audio" ? "AUDIO ASSET" : f.type === "json" ? "JSON ASSET" : "IMAGE ASSET"}</span>`}<span
+        ${this.thumbnail.url ? html`<img src=${this.thumbnail.url} alt=${f.name} />` : html`${icon(projectPage(f) === "maps" ? "map" : projectPage(f) === "characters" ? "character" : projectPage(f) === "sounds" || f.type === "audio" ? "sound" : f.type === "json" ? "code" : "image", 38)}<span class="loading">${this.thumbnail.failed ? "プレビューを取得できません" : projectPage(f) ? `${projectLabel(f)}JSON素材` : f.type === "audio" ? "AUDIO ASSET" : f.type === "json" ? "JSON ASSET" : "IMAGE ASSET"}</span>`}<span
           class="format"
           >${f.mimeType.split("/")[1]?.toUpperCase()}</span
         >

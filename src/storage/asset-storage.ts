@@ -3,27 +3,29 @@ export interface FilePage {
   files: StoredFile[];
   nextCursor?: string;
 }
-export interface ChangePage {
-  changes: { fileId: string; removed: boolean; file?: StoredFile }[];
-  nextCursor?: string;
-  newCursor?: string;
-}
 export interface CreateFileInput {
   content: Blob;
   metadata: Partial<StoredFile> & { assetId: string; name: string };
 }
 export interface AssetStorage {
   readonly connected: boolean;
-  authenticate(): Promise<void>;
-  listManagedFiles(cursor?: string): Promise<FilePage>;
-  getFile(fileId: string): Promise<Blob>;
-  getMetadata(fileId: string): Promise<StoredFile>;
-  createFile(input: CreateFileInput): Promise<StoredFile>;
+  authenticate(signal?: AbortSignal): Promise<void>;
+  listManagedFiles(cursor?: string, signal?: AbortSignal): Promise<FilePage>;
+  getFile(fileId: string, signal?: AbortSignal): Promise<Blob>;
+  getMetadata(fileId: string, signal?: AbortSignal): Promise<StoredFile>;
+  createFile(input: CreateFileInput, signal?: AbortSignal): Promise<StoredFile>;
   updateMetadata(
     fileId: string,
     input: Partial<StoredFile>,
     expectedVersion?: string,
+    signal?: AbortSignal,
   ): Promise<StoredFile>;
-  updateContent(fileId: string, content: Blob, expectedVersion?: string): Promise<StoredFile>;
-  trashFile(fileId: string, expectedVersion?: string): Promise<void>;
+  updateContent(
+    fileId: string,
+    content: Blob,
+    expectedVersion?: string,
+    metadata?: Partial<StoredFile>,
+    signal?: AbortSignal,
+  ): Promise<StoredFile>;
+  trashFile(fileId: string, expectedVersion?: string, signal?: AbortSignal): Promise<void>;
 }

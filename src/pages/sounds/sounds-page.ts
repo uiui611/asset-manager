@@ -12,7 +12,13 @@ import {
   soundDefaults,
   stopPreset,
 } from "../../application/audio";
-import { askName, confirmDiscard, editing, fingerprint } from "../../application/edit-session";
+import {
+  askName,
+  confirmDiscard,
+  editing,
+  fingerprint,
+  updateLeaveGuard,
+} from "../../application/edit-session";
 import { download, jsonBlob } from "../../application/media";
 import { icon } from "../../components/icon";
 import { shared } from "../../components/styles";
@@ -200,49 +206,27 @@ export class SoundsPage extends LitElement {
     app.removeEventListener("change", this.change);
     window.removeEventListener("keydown", this.keydown);
     if (editing.dirty === this.dirty) editing.dirty = () => false;
+    updateLeaveGuard();
     clearTimeout(this.timer);
     this.stopPreview();
   }
-  private previewTimer?: ReturnType<typeof setTimeout>;
-  private soundSignature() {
-    return JSON.stringify(
-      this.preset.tracks.map(({ parameters, gain, offset, muted }) => ({
-        parameters,
-        gain,
-        offset,
-        muted,
-      })),
-    );
+  protected updated() {
+    updateLeaveGuard();
   }
   private stopPreview() {
-    clearTimeout(this.previewTimer);
     stopPreset();
   }
-  private schedulePreview() {
-    clearTimeout(this.previewTimer);
-    if (!hasWebAudio()) return;
-    this.previewTimer = setTimeout(() => {
-      if (!this.isConnected) return;
-      void Promise.resolve()
-        .then(() => playSamples(renderMix(this.preset)))
-        .catch((error) => {
-          app.error = String(error);
-          app.changed();
-        });
-    }, 350);
-  }
   private edit(action: () => void) {
-    const before = this.soundSignature();
     this.history.push(structuredClone(this.preset));
     if (this.history.length > 40) this.history.shift();
     this.redoHistory = [];
     action();
     this.changed();
-    if (before !== this.soundSignature()) this.schedulePreview();
   }
   private changed() {
     this.preset = { ...this.preset, updatedAt: now() };
     this.saved = this.dirty() ? "未保存の変更" : this.version ? "保存済み" : "未保存";
+    updateLeaveGuard();
     this.scheduleWaves();
   }
   private undo(redo = false) {
@@ -304,11 +288,12 @@ export class SoundsPage extends LitElement {
   }
   private async save(asCopy = false) {
     if (app.busy) return;
+    const cancellation = app.cancellationToken;
     const name =
       asCopy || !this.preset.name.trim()
         ? await askName(asCopy ? this.preset.name : "")
         : this.preset.name.trim();
-    if (!name) return;
+    if (!name || !this.isConnected || cancellation !== app.cancellationToken) return;
     const originalName = this.preset.name;
     const snapshot = structuredClone(this.preset);
     snapshot.name = name;
@@ -325,11 +310,13 @@ export class SoundsPage extends LitElement {
       };
       this.baseline = fingerprint(snapshot);
       this.saved = this.dirty() ? "未保存の変更" : "保存済み";
+      updateLeaveGuard();
     }
   }
   private async saveWav() {
+    const cancellation = app.cancellationToken;
     const name = this.preset.name.trim() || (await askName());
-    if (!name) return;
+    if (!name || !this.isConnected || cancellation !== app.cancellationToken) return;
     const snapshot = structuredClone(this.preset);
     await app.run(async () => {
       const id = uid();

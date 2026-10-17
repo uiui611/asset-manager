@@ -4,8 +4,8 @@ async function seed(page: Page) {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "素材ライブラリ" })).toBeVisible();
   await page.evaluate(async () => {
-    const { app, storage } = await import("/src/application/asset-service.ts"),
-      { db } = await import("/src/database/db.ts");
+    const { app, storage } = await import("/src/application/asset-service.ts");
+    const { ApiError } = await import("/src/storage/http-asset-storage.ts");
     await app.init();
     type Record = import("/src/domain/models.ts").StoredFile;
     const files = new Map<string, { file: Record; blob: Blob }>();
@@ -31,6 +31,14 @@ async function seed(page: Page) {
       if (!item) throw new Error("missing");
       return item.blob;
     };
+    storage.getMetadata = async (id) => {
+      const item = files.get(id);
+      if (!item) throw new ApiError("missing", 404);
+      return item.file;
+    };
+    storage.listManagedFiles = async () => ({
+      files: [...files.values()].map((item) => item.file),
+    });
     storage.trashFile = async (id) => {
       await new Promise((r) => setTimeout(r, 250));
       files.delete(id);
@@ -65,10 +73,11 @@ async function seed(page: Page) {
         }),
       );
     }
-    await db.tags.bulkPut([
+    app.tags = [
       { tagId: "nature", name: "自然", color: "green" },
       { tagId: "color", name: "色", color: "blue" },
-    ]);
+    ];
+    storage.listTags = async () => app.tags;
     await app.refresh();
   });
 }
@@ -164,7 +173,9 @@ test("tile composition rejects mismatched sizes, preserves sources by default, a
     page.locator("asset-palette").getByRole("button", { name: "red.png", exact: true }),
   ).toHaveCount(0);
 });
-test("automatic sound preview is debounced and stop cancels pending playback", async ({ page }) => {
+test("sound changes remain silent until explicit preview and stop prevents further playback", async ({
+  page,
+}) => {
   await page.addInitScript(() => {
     let starts = 0;
     Object.defineProperty(window, "previewStarts", { get: () => starts });
@@ -190,7 +201,7 @@ test("automatic sound preview is debounced and stop cancels pending playback", a
   const count = () => page.evaluate(() => Reflect.get(window, "previewStarts") as number);
   await page.getByLabel("効果音名", { exact: true }).fill("silent name");
   expect(await count()).toBe(0);
-  // Hold the debounce timer while browser actions run, even on slow CI hosts.
+  // Advance beyond the former debounce window to detect unintended automatic playback.
   const clockStart = new Date();
   await page.clock.install({ time: clockStart });
   await page.clock.pauseAt(new Date(clockStart.getTime() + 60_000));
@@ -203,9 +214,9 @@ test("automatic sound preview is debounced and stop cancels pending playback", a
     }
   });
   expect(await count()).toBe(0);
-  await page.clock.runFor(349);
+  await page.clock.runFor(500);
   expect(await count()).toBe(0);
-  await page.clock.runFor(1);
+  await page.getByRole("button", { name: "試聴する", exact: true }).click();
   expect(await count()).toBe(1);
   await slider.evaluate((el) => {
     (el as HTMLInputElement).value = "0.4";
@@ -266,7 +277,10 @@ test("failed composite upload preserves sources and split saving displays progre
   await page.getByRole("button", { name: "分割結果を確認", exact: true }).click();
   await expect(page.getByText(/8枚のPNG/)).toBeVisible();
   await page.getByRole("button", { name: "画像素材として保存", exact: true }).click();
-  const progress = page.getByRole("dialog").getByRole("progressbar", { name: "保存の進捗" });
+  const progress = page
+    .getByRole("dialog", { name: "素材の操作", exact: true })
+    .getByRole("article", { name: "タイル分割の操作結果", exact: true })
+    .getByRole("progressbar", { name: "タイル分割の進捗", exact: true });
   await expect(progress).toBeVisible();
   await expect(progress).toHaveAttribute("max", "8");
   await expect.poll(async () => Number(await progress.getAttribute("value"))).toBeGreaterThan(0);

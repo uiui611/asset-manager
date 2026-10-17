@@ -18,7 +18,9 @@ test("unnamed editors guard navigation and new files without saving local drafts
   await page.getByRole("button", { name: "変更を破棄", exact: true }).click();
   await expect(name).toHaveValue("");
   expect(
-    await page.evaluate(async () => (await import("/src/database/db.ts")).db.projects.count()),
+    await page.evaluate(
+      async () => (await import("/src/application/asset-service.ts")).app.files.length,
+    ),
   ).toBe(0);
   await expect(page.getByLabel("開く").locator("option")).toHaveCount(1);
   await page.getByRole("button", { name: "音楽・効果音", exact: true }).click();
@@ -89,9 +91,7 @@ test("10,000 item library virtualizes cards and filters locally", async ({ page 
       assetId: `a${i}`,
       fileId: `f${i}`,
       name: `forest-${String(i).padStart(5, "0")}.png`,
-      kind: "asset",
       type: "image",
-      role: "source",
       mimeType: "image/png",
       size: 512,
       version: "1",

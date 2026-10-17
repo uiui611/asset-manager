@@ -1,16 +1,13 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { AssetService, storage } from "../../src/application/asset-service";
-import { db } from "../../src/database/db";
 import type { StoredFile } from "../../src/domain/models";
 import { AssetSearch } from "../../src/domain/search";
 
-beforeEach(async () => {
-  await db.open();
+beforeEach(() => {
   vi.stubGlobal("navigator", { onLine: true });
   storage.connected = true;
 });
-afterEach(async () => {
-  await db.delete();
+afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -19,9 +16,10 @@ it("reuses trimmed names and persists the server tag ID", async () => {
   const tag = { tagId: "server-id", name: "森", color: "green" };
   const create = vi.spyOn(storage, "createTag").mockResolvedValue(tag);
   expect(await service.createTag("  森  ")).toEqual(tag);
-  expect(await db.tags.get("server-id")).toEqual(tag);
+  expect(service.tags).toEqual([tag]);
   expect(await service.createTag("森")).toEqual(tag);
-  expect(create).toHaveBeenCalledExactlyOnceWith("森");
+  expect(create).toHaveBeenCalledTimes(1);
+  expect(create.mock.calls[0][0]).toBe("森");
 });
 it("validates UTF-8 tag names before requesting creation", async () => {
   const service = new AssetService();

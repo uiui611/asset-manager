@@ -25,6 +25,8 @@ location='''    location = /asset-manager { return 301 /asset-manager/; }
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_request_buffering off;
         proxy_buffering off;
+        proxy_next_upstream off;
+        proxy_ignore_client_abort off;
         client_max_body_size 1001m;
         proxy_read_timeout 900;
         proxy_send_timeout 900;

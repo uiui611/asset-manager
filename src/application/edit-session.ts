@@ -6,34 +6,61 @@ export const fingerprint = (value: object) =>
   );
 
 export const editing = { dirty: () => false, locked: () => false };
-window.addEventListener("beforeunload", (event) => {
-  if (editing.dirty() || editing.locked() || app.uploads > 0) {
+const unfinished = () => app.hasUnfinishedOperations || editing.locked();
+const beforeUnload = (event: BeforeUnloadEvent) => {
+  if (editing.dirty() || unfinished()) {
     event.preventDefault();
     event.returnValue = "";
   }
+};
+let warning = false;
+export function updateLeaveGuard() {
+  const needed = editing.dirty() || unfinished();
+  if (needed === warning) return;
+  warning = needed;
+  if (needed) window.addEventListener("beforeunload", beforeUnload);
+  else window.removeEventListener("beforeunload", beforeUnload);
+}
+app.addEventListener("change", updateLeaveGuard);
+window.addEventListener("pagehide", () => app.discardUnfinished());
+window.addEventListener("pageshow", (event) => {
+  // A cached page must not resume promises or queued writes from its previous visit.
+  if (event.persisted) app.discardUnfinished();
+  updateLeaveGuard();
 });
 
 let pending: Promise<string | null> | undefined;
 function dialog(name?: string, localDownload = false): Promise<string | null> {
   if (pending) return pending;
+  const operations = name === undefined && unfinished();
   const element = document.createElement("dialog");
   element.setAttribute(
     "aria-label",
-    name === undefined ? "未保存の変更" : localDownload ? "エクスポート名を入力" : "保存名を入力",
+    name === undefined
+      ? operations
+        ? "未完了の操作"
+        : "未保存の変更"
+      : localDownload
+        ? "エクスポート名を入力"
+        : "保存名を入力",
   );
   element.style.cssText =
     "border:1px solid #d5dfcd;border-radius:14px;padding:28px;max-width:440px;width:calc(100% - 48px);color:#304b35;background:#fcfefa;font:14px system-ui";
   const heading = document.createElement("h2");
   heading.textContent =
     name === undefined
-      ? "未保存の変更があります"
+      ? operations
+        ? "未完了の操作があります"
+        : "未保存の変更があります"
       : localDownload
         ? "エクスポート名を入力"
         : "保存名を入力";
   const message = document.createElement("p");
   message.textContent =
     name === undefined
-      ? "変更を破棄して移動しますか？ 編集を続けるにはキャンセルしてください。"
+      ? operations
+        ? `移動すると未送信分と再試行待ちの内容を破棄します。送信済みの要求は保存される場合があります。${editing.dirty() ? "未保存の編集も破棄します。" : ""}処理を続けるにはこの画面に留まってください。`
+        : "変更を破棄して移動しますか？ 編集を続けるにはキャンセルしてください。"
       : localDownload
         ? "端末にダウンロードするファイル名を入力してください。"
         : "素材ライブラリに保存する名前を入力してください。";
@@ -47,10 +74,17 @@ function dialog(name?: string, localDownload = false): Promise<string | null> {
     "box-sizing:border-box;width:100%;padding:12px;margin:10px 0;border:1px solid #acbea0;border-radius:6px";
   const cancel = document.createElement("button");
   cancel.type = "button";
-  cancel.textContent = "キャンセル";
+  cancel.textContent = operations ? "この画面に留まる" : "キャンセル";
   const ok = document.createElement("button");
   ok.type = "submit";
-  ok.textContent = name === undefined ? "変更を破棄" : localDownload ? "ダウンロード" : "保存";
+  ok.textContent =
+    name === undefined
+      ? operations
+        ? "未送信分を取り消して移動"
+        : "変更を破棄"
+      : localDownload
+        ? "ダウンロード"
+        : "保存";
   for (const button of [cancel, ok])
     button.style.cssText =
       "padding:10px 18px;margin:8px 8px 0 0;border:1px solid #acbea0;border-radius:7px;background:#edf3e4;color:#304b35;cursor:pointer";
@@ -89,6 +123,10 @@ function dialog(name?: string, localDownload = false): Promise<string | null> {
 }
 export const askName = (name = "", localDownload = false) => dialog(name, localDownload);
 export async function confirmDiscard() {
-  if (editing.locked()) return false;
-  return !editing.dirty() || (await dialog()) === "discard";
+  // A name dialog belongs to the current editor and must settle before SPA navigation.
+  if (pending) return false;
+  if (!editing.dirty() && !unfinished()) return true;
+  if ((await dialog()) !== "discard") return false;
+  app.discardUnfinished();
+  return true;
 }

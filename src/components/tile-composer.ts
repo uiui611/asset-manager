@@ -1,5 +1,6 @@
 import { css, html, LitElement } from "lit";
-import { app, storage } from "../application/asset-service";
+import { app } from "../application/asset-service";
+import { hashBlob } from "../application/media";
 import { loadImage } from "../canvas/images";
 import { type StoredFile, uid } from "../domain/models";
 import { tileSheetLayout } from "../domain/tile-sheet";
@@ -80,11 +81,16 @@ export class TileComposer extends LitElement {
   private sourceVersions = new Map<string, string>();
   private generation = 0;
   private outputId?: string;
+  private uploadId?: string;
   constructor() {
     super();
     new DialogController(this);
   }
-  private change = () => this.requestUpdate();
+  private change = () => {
+    if (this.uploadId && app.files.some((file) => file.assetId === this.uploadId))
+      this.outputId = this.uploadId;
+    this.requestUpdate();
+  };
   connectedCallback() {
     super.connectedCallback();
     app.addEventListener("change", this.change);
@@ -125,6 +131,7 @@ export class TileComposer extends LitElement {
     this.error = "";
     this.blob = undefined;
     this.outputId = undefined;
+    this.uploadId = undefined;
     URL.revokeObjectURL(this.preview);
     this.preview = "";
     this.dimensions = "";
@@ -202,23 +209,34 @@ export class TileComposer extends LitElement {
       return;
     }
     const remove = this.removeSources;
+    const cancellation = app.cancellationToken;
     const result = await app.run(async () => {
       if (!this.outputId) {
-        const id = uid();
-        const saved = await storage.createFile({
-          content: blob,
-          metadata: {
-            assetId: id,
+        this.uploadId ||= uid();
+        const id = this.uploadId;
+        const sha256 = await hashBlob(blob);
+        if (!this.isConnected || cancellation !== app.cancellationToken) return false;
+        const complete = await app.startOperation("upload", [
+          {
+            id,
             name,
-            type: "image",
-            tagIds: ["image"],
-            description: "",
+            blob,
+            metadata: {
+              assetId: id,
+              name,
+              type: "image",
+              mimeType: "image/png",
+              tagIds: ["image"],
+              description: "",
+              sha256,
+            },
           },
-        });
-        await app.putFile(saved);
-        this.outputId = saved.assetId;
+        ]);
+        if (!complete || !this.isConnected || cancellation !== app.cancellationToken) return false;
+        this.outputId = id;
       }
       // Destructive work starts only after the composite is durably saved.
+      if (!this.isConnected || cancellation !== app.cancellationToken) return false;
       if (remove) {
         const complete = await app.startOperation(
           "bulk-trash",
@@ -304,7 +322,7 @@ export class TileComposer extends LitElement {
                 ?disabled=${app.busy}
                 @change=${(e: Event) => (this.removeSources = (e.target as HTMLInputElement).checked)}
               />保存後に元素材を削除</label
-            >${this.removeSources ? html`<p class="notice">合成画像の保存成功後、選択した元素材を削除します。既存マップやキャラクターからの参照は欠落します。</p>` : ""}${this.outputId ? html`<p class="notice">合成画像は保存済みです。削除に失敗した場合は、設定の中断した操作から再試行できます。</p>` : ""}
+            >${this.removeSources ? html`<p class="notice">合成画像の保存成功後、選択した元素材を削除します。既存マップやキャラクターからの参照は欠落します。</p>` : ""}${this.outputId ? html`<p class="notice">合成画像は保存済みです。未完了の削除は操作パネルから明示的に再試行できます。</p>` : ""}
           </div>
         </div>
         <footer>
