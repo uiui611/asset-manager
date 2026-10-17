@@ -5,29 +5,6 @@ const validators = { map, character, sound };
 export function validateProject(kind: Kind, value: unknown): asserts value is Project {
   if (kind !== "map" && kind !== "character" && kind !== "sound")
     throw new Error("プロジェクト種別が不正です。");
-  if (
-    kind === "sound" &&
-    value &&
-    typeof value === "object" &&
-    "format" in value &&
-    value.format === "jsfxr" &&
-    "parameters" in value
-  ) {
-    Object.assign(value, {
-      format: "multitrack",
-      tracks: [
-        {
-          id: "track-1",
-          name: "トラック 1",
-          gain: 1,
-          offset: 0,
-          muted: false,
-          parameters: value.parameters,
-        },
-      ],
-    });
-    delete (value as { parameters?: unknown }).parameters;
-  }
   const validate = validators[kind];
   if (!validate(value)) throw new Error(`JSONの形式が不正です: ${JSON.stringify(validate.errors)}`);
   if (kind === "map") {

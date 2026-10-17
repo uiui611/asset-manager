@@ -65,7 +65,7 @@
 ## 留意事項
 
 - 編集用JSONの未保存変更とUndo/Redoはメモリ内だけ。ページを閉じて破棄した変更は復元しない。
-- 旧jsfxr編集JSONは読み込み時に1トラックへ変換。新規保存はmultitrack形式。
+- 効果音の編集JSONはmultitrack形式。旧jsfxrプロジェクトJSONの互換変換は廃止し、読み込み時に拒否する。
 - 自動試聴は350ms、波形は120msのデバウンスで更新。最大8トラック、各トラック20秒、開始位置0〜10秒。
 - Windows WebKitにはWeb Audioがないため試聴ボタンは無効。波形生成・JSON保存・WAV出力は利用できる。
 - Google Driveのデータ・旧IndexedDBは自動移行しない。

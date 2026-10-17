@@ -20,7 +20,6 @@ export class AssetDatabase extends Dexie {
   >;
   syncState!: Table<{ key: string; value: string }, string>;
   operationJournal!: Table<OperationJournal, string>;
-  waveforms!: Table<{ assetId: string; values: number[]; version: string }, string>;
   constructor(name = "asset-atelier-rustfs-v2") {
     super(name);
     this.version(1).stores({
@@ -33,6 +32,7 @@ export class AssetDatabase extends Dexie {
       operationJournal: "id,status",
       waveforms: "assetId",
     });
+    this.version(2).stores({ waveforms: null });
   }
 }
 export const db = new AssetDatabase();

@@ -3,6 +3,19 @@ import { mixSamples, samplesToWav } from "../../src/application/audio";
 import { validateProject } from "../../src/schemas/projects";
 
 describe("sound mixing", () => {
+  it("rejects legacy single-track projects without mutating their data", () => {
+    const legacy = {
+      schemaVersion: 1,
+      id: "s",
+      name: "legacy",
+      format: "jsfxr",
+      parameters: { oldParams: true, wave_type: 0 },
+      updatedAt: "",
+    };
+    const original = structuredClone(legacy);
+    expect(() => validateProject("sound", legacy)).toThrow();
+    expect(legacy).toEqual(original);
+  });
   it("aligns offsets, applies gain and excludes muted tracks", () => {
     const mixed = mixSamples([
       {

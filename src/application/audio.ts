@@ -1,6 +1,5 @@
 import { jsfxr, sfxr } from "jsfxr";
-import { db } from "../database/db";
-import type { SoundPreset, SoundTrack, StoredFile } from "../domain/models";
+import type { SoundPreset, SoundTrack } from "../domain/models";
 import { validateProject } from "../schemas/projects";
 
 let context: AudioContext | undefined;
@@ -21,73 +20,9 @@ export function peaks(samples: Float32Array | number[], bins = 160) {
     return peak;
   });
 }
-export async function playPreset(parameters: Record<string, number | string | boolean>) {
-  if (!hasWebAudio())
-    throw new Error(
-      "このブラウザ環境ではWeb Audioを利用できません。効果音の編集・JSON保存は利用できます。",
-    );
-  validateProject("sound", {
-    schemaVersion: 1,
-    id: "preview",
-    name: "preview",
-    format: "jsfxr",
-    parameters,
-    updatedAt: new Date().toISOString(),
-  });
-  context ??= new AudioContext();
-  await context.resume();
-  source?.stop();
-  const safe = {
-    ...parameters,
-    sound_vol: Math.min(0.5, Math.max(0, Number(parameters.sound_vol ?? 0.2))),
-    sample_rate: 44100,
-  };
-  for (const [key, value] of Object.entries(safe))
-    if (
-      typeof value === "number" &&
-      (!Number.isFinite(value) || (key.startsWith("p_") && Math.abs(value) > 1))
-    )
-      throw new Error("音声パラメータは -1〜1 の範囲で指定してください。");
-  const synth = new jsfxr.SoundEffect(safe);
-  const samples = synth.getRawBuffer().normalized;
-  if (!samples.length) return [];
-  const buffer = context.createBuffer(1, samples.length, 44100);
-  buffer.copyToChannel(new Float32Array(samples), 0);
-  source = context.createBufferSource();
-  source.buffer = buffer;
-  source.connect(context.destination);
-  source.start();
-  return peaks(samples);
-}
 export function stopPreset() {
   source?.stop();
   source = undefined;
-}
-export async function audioWaveform(file: StoredFile, blob: Blob) {
-  const cached = await db.waveforms.get(file.assetId);
-  if (cached?.version === file.version) return cached.values;
-  const ctx = new AudioContext();
-  try {
-    const decoded = await ctx.decodeAudioData(await blob.arrayBuffer());
-    const values = peaks(decoded.getChannelData(0));
-    await db.waveforms.put({
-      assetId: file.assetId,
-      version: file.version,
-      values,
-    });
-    return values;
-  } finally {
-    await ctx.close();
-  }
-}
-
-export function renderWav(parameters: Record<string, number | string | boolean>) {
-  const samples = new jsfxr.SoundEffect({
-    ...parameters,
-    sample_rate: 44100,
-    sound_vol: Math.min(0.5, Number(parameters.sound_vol ?? 0.2)),
-  }).getRawBuffer().normalized;
-  return samplesToWav(samples);
 }
 export function samplesToWav(samples: number[] | Float32Array) {
   const buffer = new ArrayBuffer(44 + samples.length * 2),
