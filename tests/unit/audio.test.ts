@@ -1,6 +1,88 @@
-import { describe, expect, it } from "vitest";
-import { mixSamples, samplesToWav } from "../../src/application/audio";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  generateSound,
+  mixSamples,
+  playSamples,
+  renderMix,
+  samplesToWav,
+  stopPreset,
+} from "../../src/application/audio";
+import type { SoundPreset } from "../../src/domain/models";
+import { soundControls, soundParameterMax } from "../../src/domain/sound-parameters";
 import { validateProject } from "../../src/schemas/projects";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+describe("sound generation", () => {
+  const presetNames = [
+    "pickupCoin",
+    "laserShoot",
+    "explosion",
+    "powerUp",
+    "hitHurt",
+    "jump",
+    "blipSelect",
+    "random",
+  ];
+  it.each(presetNames)(
+    "keeps %s within the controls' ranges and renders valid project audio",
+    (name) => {
+      for (const random of [0, 0.2, 0.5, 0.9, 0.999]) {
+        vi.spyOn(Math, "random").mockReturnValue(random);
+        const parameters = generateSound(name);
+        for (const [key, , min] of soundControls) {
+          expect(parameters[key]).toBeGreaterThanOrEqual(min);
+          expect(parameters[key]).toBeLessThanOrEqual(soundParameterMax(key));
+        }
+        const preset: SoundPreset = {
+          schemaVersion: 1,
+          id: "s",
+          name: "test",
+          format: "multitrack",
+          updatedAt: "",
+          tracks: [{ id: "t", name: "t", parameters, gain: 1, offset: 0, muted: false }],
+        };
+        // Include serialization: this is the same data used for saving and importing.
+        expect(() => validateProject("sound", JSON.parse(JSON.stringify(preset)))).not.toThrow();
+        const samples = renderMix(preset);
+        expect(samples.length).toBeGreaterThan(0);
+        expect(samples.every(Number.isFinite)).toBe(true);
+      }
+    },
+  );
+  it("retains negative values for signed sound changes", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.2);
+    const parameters = generateSound("random");
+    expect(parameters.p_freq_dramp).toBeLessThan(0);
+    expect(parameters.p_arp_mod).toBeLessThan(0);
+    expect(parameters.p_pha_offset).toBeLessThan(0);
+  });
+  it("does not start a pending preview after stop", async () => {
+    let resume!: () => void;
+    const start = vi.fn();
+    vi.stubGlobal(
+      "AudioContext",
+      class {
+        resume() {
+          return new Promise<void>((resolve) => {
+            resume = resolve;
+          });
+        }
+        createBufferSource() {
+          return { start };
+        }
+      },
+    );
+    const playing = playSamples(new Float32Array([0.1]));
+    stopPreset();
+    resume();
+    await playing;
+    expect(start).not.toHaveBeenCalled();
+  });
+});
 
 describe("sound mixing", () => {
   it("rejects legacy single-track projects without mutating their data", () => {

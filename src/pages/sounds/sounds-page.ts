@@ -1,8 +1,8 @@
-import { sfxr } from "jsfxr";
 import { css, html, LitElement } from "lit";
 import { currentProject } from "../../app/router";
 import { app, storage } from "../../application/asset-service";
 import {
+  generateSound,
   hasWebAudio,
   peaks,
   playSamples,
@@ -24,6 +24,7 @@ import { icon } from "../../components/icon";
 import { shared } from "../../components/styles";
 import { editorKind } from "../../domain/library";
 import { now, type SoundPreset, type SoundTrack, uid } from "../../domain/models";
+import { soundControls, soundParameterMax } from "../../domain/sound-parameters";
 import { validateProject } from "../../schemas/projects";
 
 const newTrack = (n: number): SoundTrack => ({
@@ -42,31 +43,6 @@ const newSound = (): SoundPreset => ({
   tracks: [newTrack(1)],
   updatedAt: now(),
 });
-const controls: [string, string, number][] = [
-  ["p_base_freq", "基本周波数", 0],
-  ["p_freq_ramp", "周波数スライド", -1],
-  ["p_freq_dramp", "スライド加速度", -1],
-  ["p_freq_limit", "最低周波数", 0],
-  ["p_env_attack", "アタック", 0],
-  ["p_env_sustain", "サステイン", 0],
-  ["p_env_punch", "パンチ", 0],
-  ["p_env_decay", "ディケイ", 0],
-  ["p_vib_strength", "ビブラートの深さ", 0],
-  ["p_vib_speed", "ビブラートの速さ", 0],
-  ["p_arp_mod", "音程変化", -1],
-  ["p_arp_speed", "音程変化の速さ", 0],
-  ["p_duty", "デューティ比", 0],
-  ["p_duty_ramp", "デューティ変化", -1],
-  ["p_repeat_speed", "リピート", 0],
-  ["p_pha_offset", "フェイザー", -1],
-  ["p_pha_ramp", "フェイザー変化", -1],
-  ["p_lpf_freq", "ローパス", 0],
-  ["p_lpf_ramp", "ローパス変化", -1],
-  ["p_lpf_resonance", "レゾナンス", 0],
-  ["p_hpf_freq", "ハイパス", 0],
-  ["p_hpf_ramp", "ハイパス変化", -1],
-  ["sound_vol", "音量", 0],
-];
 export class SoundsPage extends LitElement {
   static properties = {
     preset: { state: true },
@@ -74,6 +50,7 @@ export class SoundsPage extends LitElement {
     waves: { state: true },
     advanced: { state: true },
     saved: { state: true },
+    help: { state: true },
   };
   static styles = [
     shared,
@@ -145,6 +122,30 @@ export class SoundsPage extends LitElement {
         float: right;
         color: #7c9270;
       }
+      .parameter-field {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        font-size: 12px;
+        color: #5e7165;
+      }
+      .parameter-label {
+        padding: 0;
+        border: 0;
+        border-radius: 2px;
+        background: transparent;
+        font-size: 12px;
+        text-decoration: underline dotted;
+        text-underline-offset: 3px;
+      }
+      .parameter-help {
+        border: 1px solid var(--line);
+        color: inherit;
+        width: min(440px, calc(100% - 32px));
+      }
+      .parameter-help::backdrop {
+        background: #172b2455;
+      }
       .muted-track {
         opacity: 0.55;
       }
@@ -160,9 +161,11 @@ export class SoundsPage extends LitElement {
   waves: Record<string, number[]> = {};
   advanced = false;
   saved = "未保存";
+  private help?: { label: string; description: string };
   private baseline = fingerprint(this.preset);
   private version?: string;
   private timer?: ReturnType<typeof setTimeout>;
+  private previewTimer?: ReturnType<typeof setTimeout>;
   private history: SoundPreset[] = [];
   private redoHistory: SoundPreset[] = [];
   private dirty = () => fingerprint(this.preset) !== this.baseline;
@@ -170,6 +173,7 @@ export class SoundsPage extends LitElement {
   private keydown = (event: KeyboardEvent) => {
     if (
       document.querySelector("dialog[open]") ||
+      this.renderRoot.querySelector("dialog[open]") ||
       event
         .composedPath()
         .some((el) => el instanceof HTMLElement && el.matches("input,textarea,select"))
@@ -214,7 +218,33 @@ export class SoundsPage extends LitElement {
     updateLeaveGuard();
   }
   private stopPreview() {
+    clearTimeout(this.previewTimer);
     stopPreset();
+  }
+  private preview() {
+    this.stopPreview();
+    void app.run(() => playSamples(renderMix(this.preset)));
+  }
+  private editSound(action: () => void) {
+    this.edit(action);
+    this.stopPreview();
+    if (hasWebAudio()) this.previewTimer = setTimeout(() => this.preview(), 250);
+  }
+  private parameterLabel(label: string, description: string) {
+    return html`<button
+      class="parameter-label"
+      aria-label=${`${label}の解説`}
+      aria-haspopup="dialog"
+      @click=${async (event: MouseEvent) => {
+        // WebKit does not focus buttons on pointer clicks; set the dialog's return target.
+        (event.currentTarget as HTMLButtonElement).focus();
+        this.help = { label, description };
+        await this.updateComplete;
+        this.renderRoot.querySelector<HTMLDialogElement>(".parameter-help")?.showModal();
+      }}
+    >
+      ${label}
+    </button>`;
   }
   private edit(action: () => void) {
     this.history.push(structuredClone(this.preset));
@@ -234,6 +264,7 @@ export class SoundsPage extends LitElement {
       to = redo ? this.history : this.redoHistory;
     const data = from.pop();
     if (data) {
+      this.stopPreview();
       to.push(structuredClone(this.preset));
       this.preset = { ...data, id: this.preset.id };
       this.selectedId = data.tracks.some((t) => t.id === this.selectedId)
@@ -420,11 +451,7 @@ export class SoundsPage extends LitElement {
           aria-label="試聴する"
           title="試聴する"
           ?disabled=${!hasWebAudio()}
-          @click=${() =>
-            app.run(() => {
-              this.stopPreview();
-              return playSamples(renderMix(this.preset));
-            })}
+          @click=${() => this.preview()}
         >
           ${icon("play", 18)}</button
         ><button aria-label="停止" title="停止" @click=${() => this.stopPreview()}>
@@ -492,17 +519,25 @@ export class SoundsPage extends LitElement {
                   ${(this.waves[t.id] || []).map((v) => html`<i style=${`height:${Math.max(2, v * 70)}px`}></i>`)}
                 </div>
                 <div class="fields">
-                  <label
-                    >音量<input
+                  <div class="parameter-field">
+                    <div>
+                      ${this.parameterLabel("音量", "このトラックを重ねるときの音量です。0で無音、1で生成した音の音量を保ちます。")}
+                    </div>
+                    <input
                       aria-label=${`${t.name} 音量`}
                       type="range"
                       min="0"
                       max="1"
                       step="0.01"
                       .value=${String(t.gain)}
-                      @input=${(event: Event) => this.edit(() => (t.gain = Number((event.target as HTMLInputElement).value)))} /></label
-                  ><label
-                    >開始位置（秒）<input
+                      @input=${(event: Event) => this.editSound(() => (t.gain = Number((event.target as HTMLInputElement).value)))}
+                    />
+                  </div>
+                  <div class="parameter-field">
+                    <div>
+                      ${this.parameterLabel("開始位置（秒）", "このトラックを鳴らし始めるまでの待ち時間です。0で最初から鳴り、値を大きくするとほかのトラックより遅れて鳴ります。")}
+                    </div>
+                    <input
                       aria-label=${`${t.name} 開始位置`}
                       type="number"
                       min="0"
@@ -512,9 +547,10 @@ export class SoundsPage extends LitElement {
                       @change=${(event: Event) => {
                         const n = Number((event.target as HTMLInputElement).value);
                         if (Number.isFinite(n) && n >= 0 && n <= 10)
-                          this.edit(() => (t.offset = n));
+                          this.editSound(() => (t.offset = n));
                       }}
-                  /></label>
+                    />
+                  </div>
                 </div>
               </article>`,
           )}
@@ -543,30 +579,68 @@ export class SoundsPage extends LitElement {
             ].map(
               ([value, label]) =>
                 html`<button
-                  @click=${() => this.edit(() => (track.parameters = { ...sfxr.generate(value), sound_vol: 0.2 }))}
+                  @click=${() => this.editSound(() => (track.parameters = generateSound(value)))}
                 >
                   ${label}
                 </button>`,
             )}
           </div>
-          <label
-            >波形<select
+          <div class="parameter-field">
+            <div>
+              ${this.parameterLabel("波形", "音色のもとになる波の形です。矩形波は電子音、ノコギリ波は鋭い音、正弦波は柔らかい音、ノイズは爆発や打撃のような音に向いています。")}
+            </div>
+            <select
               aria-label="波形"
               .value=${String(track.parameters.wave_type ?? 0)}
-              @change=${(event: Event) => this.edit(() => (track.parameters.wave_type = Number((event.target as HTMLSelectElement).value)))}
+              @change=${(event: Event) => this.editSound(() => (track.parameters.wave_type = Number((event.target as HTMLSelectElement).value)))}
             >
               ${["矩形波", "ノコギリ波", "正弦波", "ノイズ"].map((name, i) => html`<option value=${i}>${name}</option>`)}
-            </select></label
-          >
+            </select>
+          </div>
           <div class="knobs">
-            ${controls.filter((_, i) => this.advanced || [0, 1, 4, 5, 7, 22].includes(i)).map(([key, label, min]) => html`<label>${label}<span class="value">${Number(track.parameters[key] || 0).toFixed(2)}</span><input type="range" aria-label=${label} min=${min} max=${key === "sound_vol" ? 0.5 : 1} step="0.01" .value=${String(track.parameters[key] || 0)} @input=${(event: Event) => this.edit(() => (track.parameters[key] = Number((event.target as HTMLInputElement).value)))} /></label>`)}
+            ${soundControls
+              .filter((_, i) => this.advanced || [0, 1, 4, 5, 7, 22].includes(i))
+              .map(
+                ([key, label, min, description]) =>
+                  html`<div class="parameter-field">
+                    <div>
+                      ${this.parameterLabel(label, description)}<span class="value"
+                        >${Number(track.parameters[key] || 0).toFixed(2)}</span
+                      >
+                    </div>
+                    <input
+                      type="range"
+                      aria-label=${label}
+                      min=${min}
+                      max=${soundParameterMax(key)}
+                      step="0.01"
+                      .value=${String(track.parameters[key] || 0)}
+                      @input=${(event: Event) => this.editSound(() => (track.parameters[key] = Number((event.target as HTMLInputElement).value)))}
+                    />
+                  </div>`,
+              )}
           </div>
           <button @click=${() => (this.advanced = !this.advanced)}>
             ${this.advanced ? "基本パラメータだけ表示" : "すべてのパラメータを表示"}
           </button>
           <p class="muted">パラメータを変更すると波形を更新し、操作が止まってから試聴します。</p>
         </section>
-      </div>`;
+      </div>
+      <dialog
+        class="dialog parameter-help"
+        aria-labelledby="parameter-help-title"
+        aria-describedby="parameter-help-description"
+      >
+        <h2 id="parameter-help-title">${this.help?.label}</h2>
+        <p id="parameter-help-description">${this.help?.description}</p>
+        <footer>
+          <button
+            @click=${() => this.renderRoot.querySelector<HTMLDialogElement>(".parameter-help")?.close()}
+          >
+            閉じる
+          </button>
+        </footer>
+      </dialog>`;
   }
 }
 customElements.define("sounds-page", SoundsPage);
