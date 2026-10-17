@@ -221,9 +221,21 @@ export class SoundsPage extends LitElement {
     clearTimeout(this.previewTimer);
     stopPreset();
   }
-  private preview() {
+  private async preview() {
     this.stopPreview();
-    void app.run(() => playSamples(renderMix(this.preset)));
+    if (app.busy) return;
+    const cancellation = app.cancellationToken;
+    app.error = "";
+    app.changed();
+    // Audio activation can wait indefinitely; it must not hold the storage operation lock.
+    try {
+      await playSamples(renderMix(this.preset));
+    } catch (error) {
+      if (this.isConnected && cancellation === app.cancellationToken) {
+        app.error = String(error);
+        app.changed();
+      }
+    }
   }
   private editSound(action: () => void) {
     this.edit(action);

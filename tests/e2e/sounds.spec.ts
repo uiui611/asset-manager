@@ -102,3 +102,74 @@ test("preset editing works without Web Audio", async ({ page }) => {
   await expect(page.getByRole("alert")).toHaveCount(0);
   await expect(page.getByText("未保存の変更", { exact: true })).toBeVisible();
 });
+
+test("waiting for audio activation does not block editing and cancelled previews stay silent", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    let starts = 0;
+    let resumes = 0;
+    let release = () => {};
+    Object.defineProperties(window, {
+      previewStarts: { get: () => starts },
+      previewResumes: { get: () => resumes },
+      releaseAudio: { value: () => release() },
+    });
+    window.AudioContext = class {
+      destination = {};
+      resume() {
+        resumes++;
+        return new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      }
+      createBuffer() {
+        return { copyToChannel() {} };
+      }
+      createBufferSource() {
+        return {
+          connect() {},
+          start() {
+            starts++;
+          },
+          stop() {},
+        };
+      }
+    } as unknown as typeof AudioContext;
+  });
+  await page.goto("/#sounds");
+  await page.getByLabel("基本周波数", { exact: true }).fill("0.85");
+  await expect.poll(() => page.evaluate(() => Reflect.get(window, "previewResumes"))).toBe(1);
+  const newFile = page.getByRole("button", { name: "新規作成", exact: true });
+  await expect(newFile).toBeEnabled();
+  await page.getByRole("button", { name: "停止", exact: true }).click();
+  await page.evaluate(() => Reflect.get(window, "releaseAudio")());
+  expect(await page.evaluate(() => Reflect.get(window, "previewStarts"))).toBe(0);
+
+  await page.getByRole("button", { name: "試聴する", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => Reflect.get(window, "previewResumes"))).toBe(2);
+  await expect(newFile).toBeEnabled();
+  await newFile.click();
+  await page.getByRole("button", { name: "変更を破棄", exact: true }).click();
+  await expect(page.getByText("未保存", { exact: true })).toBeVisible();
+  await page.evaluate(() => Reflect.get(window, "releaseAudio")());
+  expect(await page.evaluate(() => Reflect.get(window, "previewStarts"))).toBe(0);
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+test("audio activation failures display an error without blocking editing", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.addInitScript(() => {
+    window.AudioContext = class {
+      async resume() {
+        throw new Error("Audio activation failed");
+      }
+    } as unknown as typeof AudioContext;
+  });
+  await page.goto("/#sounds");
+  await page.getByRole("button", { name: "試聴する", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("Audio activation failed");
+  await expect(page.getByRole("button", { name: "新規作成", exact: true })).toBeEnabled();
+  expect(errors).toEqual([]);
+});
