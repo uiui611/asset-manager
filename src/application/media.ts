@@ -80,6 +80,12 @@ export async function validateImport(
   }
   throw new Error(`${file.name}: 画像・音声・JSONファイルを選んでください。`);
 }
+export async function importRasterImage(file: File): Promise<Blob> {
+  const result = await validateImport(file);
+  if (result.type !== "image" || result.blob.type === "image/svg+xml")
+    throw new Error("PNG・JPEG・WebPなどの画像を選んでください。");
+  return result.blob;
+}
 async function validateImage(blob: Blob) {
   const url = URL.createObjectURL(blob);
   try {

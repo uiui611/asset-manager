@@ -620,10 +620,7 @@ export class AssetsPage extends LitElement {
               @click=${() => this.renderRoot.querySelector<HTMLInputElement>("#split-upload")?.click()}
             >
               タイル分割</button
-            ><button
-              ?disabled=${app.busy || !storage.connected}
-              @click=${() => (this.showComposer = true)}
-            >
+            ><button ?disabled=${app.busy} @click=${() => (this.showComposer = true)}>
               タイル合成</button
             ><button
               class="primary"
