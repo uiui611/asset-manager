@@ -1,10 +1,20 @@
-import { overwriteBakedLayer, prepareCharacterLayers } from "../../application/character-bake";
+import {
+  type BakedLayer,
+  overwriteBakedLayer,
+  prepareCharacterLayers,
+} from "../../application/character-bake";
 import { confirmAction } from "../../components/confirm-action";
 import "../../components/asset-palette";
 import { css, html, LitElement } from "lit";
 import { currentProject } from "../../app/router";
 import { app, storage } from "../../application/asset-service";
-import { askName, confirmDiscard, editing, fingerprint } from "../../application/edit-session";
+import {
+  askName,
+  confirmDiscard,
+  editing,
+  fingerprint,
+  updateLeaveGuard,
+} from "../../application/edit-session";
 import { download, hashBlob, jsonBlob } from "../../application/media";
 import { loadImage } from "../../canvas/images";
 import { drawCharacter, drawMap } from "../../canvas/renderers";
@@ -19,6 +29,7 @@ import {
   isRaster,
   type MapProject,
   now,
+  type Operation,
   type StoredFile,
   uid,
 } from "../../domain/models";
@@ -378,7 +389,17 @@ export class EditorPage extends LitElement {
   aspectLocked = true;
   baking = false;
   bakeStatus = "";
-  private locked = () => this.baking;
+  private locked = () => this.baking || this.hasPendingBakeLayers();
+  private bakedOperations = new Map<
+    string,
+    {
+      item: BakedLayer;
+      operation: Operation;
+      projectId: string;
+      cancellation: number;
+      uncertain: boolean;
+    }
+  >();
   private baseline = "";
   private version?: string;
   private dirty = () => this.baseline !== fingerprint(this.project);
@@ -428,6 +449,7 @@ export class EditorPage extends LitElement {
   };
   private renderSequence = 0;
   private change = () => {
+    this.syncBakedOperations();
     this.requestUpdate();
     void this.refreshProjects();
     void this.loadImages();
@@ -458,6 +480,7 @@ export class EditorPage extends LitElement {
     app.removeEventListener("change", this.change);
     if (editing.dirty === this.dirty) editing.dirty = () => false;
     if (editing.locked === this.locked) editing.locked = () => false;
+    updateLeaveGuard();
     window.removeEventListener("keydown", this.keydown);
 
     this.endPointer();
@@ -477,6 +500,7 @@ export class EditorPage extends LitElement {
     }
   }
   protected updated() {
+    updateLeaveGuard();
     this.draw();
   }
   private async refreshProjects() {
@@ -644,17 +668,18 @@ export class EditorPage extends LitElement {
   private changed() {
     this.project = { ...this.project, updatedAt: now() };
     this.saved = this.dirty() ? "未保存の変更" : this.version ? "保存済み" : "未保存";
+    updateLeaveGuard();
     this.requestUpdate();
     this.draw();
   }
   private edit(action: () => void) {
-    if (this.baking) return;
+    if (this.baking || this.hasPendingBakeLayers()) return;
     this.snapshot();
     action();
     this.changed();
   }
   private undo(redo = false) {
-    if (this.baking) return;
+    if (this.baking || this.hasPendingBakeLayers()) return;
     const from = redo ? this.redoHistory : this.history;
     const to = redo ? this.history : this.redoHistory;
     const previous = from.pop();
@@ -677,6 +702,7 @@ export class EditorPage extends LitElement {
     const project = await app.run(() => app.openProject(file));
     if (project) {
       validateProject(this.kind, project);
+      this.clearBakeState();
       this.project = project as EditorProject;
       this.layerId = this.project.layers[0]?.id || "";
       this.history = [];
@@ -691,6 +717,7 @@ export class EditorPage extends LitElement {
   private async newProject() {
     if (app.busy) return;
     if (!(await confirmDiscard())) return;
+    this.clearBakeState();
     this.project = this.kind === "map" ? makeMap() : makeCharacter();
     this.layerId = this.project.layers[0]?.id || "";
     this.history = [];
@@ -778,11 +805,13 @@ export class EditorPage extends LitElement {
   }
   private async save(asCopy = false) {
     if (app.busy) return;
+    if (!this.ensureBakeResults()) return;
+    const cancellation = app.cancellationToken;
     const name =
       asCopy || !this.project.name.trim()
         ? await askName(asCopy ? this.project.name : "")
         : this.project.name.trim();
-    if (!name) return;
+    if (!name || !this.isConnected || cancellation !== app.cancellationToken) return;
     const originalName = this.project.name;
     const snapshot = structuredClone(this.project);
     snapshot.name = name;
@@ -799,6 +828,8 @@ export class EditorPage extends LitElement {
         preview.getContext("2d")?.drawImage(canvas, 0, 0, preview.width, preview.height);
         snapshot.previewImage = preview.toDataURL("image/png");
       }
+      if (!this.isConnected || cancellation !== app.cancellationToken)
+        throw new DOMException("保存を取り消しました。", "AbortError");
       return app.saveProject(this.kind, snapshot, asCopy ? undefined : this.version);
     });
     if (result) {
@@ -810,6 +841,7 @@ export class EditorPage extends LitElement {
       };
       this.baseline = fingerprint(snapshot);
       this.saved = this.dirty() ? "未保存の変更" : "保存済み";
+      updateLeaveGuard();
     }
   }
   private async useBase() {
@@ -845,11 +877,22 @@ export class EditorPage extends LitElement {
     if (name) download(jsonBlob({ ...this.project, name }), `${name}.json`);
   }
   private async bakeLayers() {
-    if (this.baking || app.busy || !("canvas" in this.project)) return;
+    if (this.baking || app.busy || !("canvas" in this.project) || !this.ensureBakeResults()) return;
+    if (this.hasPendingBakeLayers()) {
+      app.error = "前回の切り出し操作を確認・再試行・破棄してから、切り出しをやり直してください。";
+      app.changed();
+      return;
+    }
+    const cancellation = app.cancellationToken;
+    const checkActive = () => {
+      if (!this.isConnected || cancellation !== app.cancellationToken)
+        throw new DOMException("切り出し保存を取り消しました。", "AbortError");
+    };
     this.baking = true;
     try {
       const name = this.project.name.trim() || (await askName());
       if (!name) return;
+      checkActive();
       if (
         !(await confirmAction(
           "元素材を切り出して上書き",
@@ -858,24 +901,31 @@ export class EditorPage extends LitElement {
         ))
       )
         return;
+      checkActive();
       this.endPointer();
       this.bakeStatus = "切り出しを準備中…";
       const snapshot = structuredClone(this.project) as CharacterComposition;
       snapshot.name = name;
-      const cancellation = app.cancellationToken;
       await app.run(async () => {
+        checkActive();
         if (this.version) {
-          const current = await storage.getMetadata(snapshot.id);
+          const current = await storage.getMetadata(snapshot.id, storage.writeSignal);
+          checkActive();
           if (current.version !== this.version)
             throw new Error(
               "このJSONは別の操作で更新されています。開き直してから実行してください。",
             );
         }
-        const items = await prepareCharacterLayers(snapshot, (done, total) => {
-          if (cancellation !== app.cancellationToken)
-            throw new Error("切り出し保存を中断しました。");
-          this.bakeStatus = `切り出しを準備中 · ${done} / ${total} 件`;
-        });
+        const items = await prepareCharacterLayers(
+          snapshot,
+          (done, total) => {
+            checkActive();
+            this.bakeStatus = `切り出しを準備中 · ${done} / ${total} 件`;
+          },
+          checkActive,
+        );
+        checkActive();
+        this.project = { ...this.project, name };
         this.history = [];
         this.redoHistory = [];
         let done = 0,
@@ -896,21 +946,21 @@ export class EditorPage extends LitElement {
                 const item = queue.shift();
                 if (!item) return;
                 try {
-                  const file = await overwriteBakedLayer(item);
-                  Object.assign(item.layer, {
-                    x: 0,
-                    y: 0,
-                    scaleX: 1,
-                    scaleY: 1,
-                    rotation: 0,
-                    opacity: 1,
+                  checkActive();
+                  const completed = await overwriteBakedLayer(item, (operation) => {
+                    operation.resultCheckRequired = true;
+                    this.bakedOperations.set(operation.id, {
+                      item,
+                      operation,
+                      projectId: snapshot.id,
+                      cancellation,
+                      uncertain: false,
+                    });
                   });
-                  this.images.set(file.assetId, item.image);
-                  this.imageVersions.set(file.assetId, file.version);
-                  this.project = structuredClone(snapshot);
-                  this.changed();
+                  checkActive();
+                  if (!completed) throw new Error("元素材の保存が完了していません。");
+                  this.syncBakedOperations();
                   done++;
-                  await app.putFile(file);
                   progress.done = done;
                   this.bakeStatus = `元素材を上書き中 · ${done} / ${items.length} 件`;
                   app.changed();
@@ -920,9 +970,15 @@ export class EditorPage extends LitElement {
               }
             }),
           );
-          if (done) {
-            this.project = structuredClone(snapshot);
-            this.changed();
+          if (failure || queue.length || cancellation !== app.cancellationToken) {
+            throw new Error(
+              `${done} / ${items.length} 件を上書きしました。未完了分は再送していません。操作パネルで結果を確認してください。成功分を反映した編集内容は未保存です。${failure ? String(failure) : "処理を中断しました。"}`,
+            );
+          }
+          if (done && this.isConnected) {
+            checkActive();
+            if (!this.ensureBakeResults()) return;
+            snapshot.layers = structuredClone((this.project as CharacterComposition).layers);
             snapshot.updatedAt = this.project.updatedAt;
             const canvas = document.createElement("canvas");
             drawCharacter(canvas, snapshot, (id) => this.images.get(id));
@@ -934,7 +990,11 @@ export class EditorPage extends LitElement {
             snapshot.previewImage = preview.toDataURL("image/png");
             this.bakeStatus = "編集用JSONを保存中…";
             try {
+              checkActive();
               const saved = await app.saveProject("character", snapshot, this.version);
+              checkActive();
+              if (!saved)
+                throw new Error("JSONの保存が完了していません。操作パネルを確認してください。");
               this.version = saved.version;
               this.project = snapshot;
               this.baseline = fingerprint(snapshot);
@@ -945,11 +1005,6 @@ export class EditorPage extends LitElement {
               );
             }
           }
-          if (queue.length && !failure) failure = new Error("切り出し保存を中断しました。");
-          if (failure)
-            throw new Error(
-              `${done} / ${items.length} 件を上書きしました。未完了のレイヤーは元の設定を保持しています。${String(failure)}`,
-            );
           this.bakeStatus = `${done}件の元素材とJSONを保存しました。`;
         } finally {
           app.transfers = app.transfers.filter((p) => p.id !== progress.id);
@@ -958,15 +1013,81 @@ export class EditorPage extends LitElement {
       });
     } finally {
       this.baking = false;
-      if (app.error)
+      updateLeaveGuard();
+      if (app.error && this.isConnected && cancellation === app.cancellationToken)
         this.bakeStatus = "切り出し保存を完了できませんでした。上のエラーを確認してください。";
       this.requestUpdate();
     }
   }
+  clearBakeState() {
+    this.bakedOperations.clear();
+    this.bakeStatus = "";
+    this.requestUpdate();
+    updateLeaveGuard();
+  }
+  private hasPendingBakeLayers() {
+    return [...this.bakedOperations.values()].some((entry) => entry.projectId === this.project.id);
+  }
+  ensureBakeResults() {
+    this.syncBakedOperations();
+    const unresolved = [...this.bakedOperations.values()].some(
+      (entry) => entry.projectId === this.project.id && entry.uncertain,
+    );
+    if (!unresolved) return true;
+    app.error =
+      "元素材の上書き結果が未確認です。操作パネルで結果を確認してください。確認できない競合や中断がある場合は、この編集を破棄して開き直してください。";
+    app.changed();
+    return false;
+  }
+  private syncBakedOperations() {
+    if (!this.isConnected || !("canvas" in this.project)) return;
+    let changed = false;
+    for (const [id, entry] of this.bakedOperations) {
+      if (entry.projectId !== this.project.id) {
+        this.bakedOperations.delete(id);
+        continue;
+      }
+      const item = entry.operation.items[0];
+      if (!item) continue;
+      if (item.status === "unknown" || item.resultCheck === "mismatch") entry.uncertain = true;
+      if (item.resultCheck === "not-saved") entry.uncertain = false;
+      // In-page cancellation drains requests already sent; confirmed successes still apply.
+      // Departure cancels operation items, so late responses cannot reach this branch as completed.
+      if (entry.cancellation !== app.cancellationToken && item.status !== "completed") {
+        entry.uncertain = true;
+        continue;
+      }
+      if (item.status === "cancelled" && !entry.uncertain) {
+        this.bakedOperations.delete(id);
+        continue;
+      }
+      if (item.status !== "completed") continue;
+      const layer = this.project.layers.find(
+        (layer) => layer.id === entry.item.layer.id && layer.assetId === entry.item.file.assetId,
+      );
+      const file = app.files.find((file) => file.assetId === entry.item.file.assetId);
+      if (!layer || !file) continue;
+      Object.assign(layer, { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 });
+      this.images.set(file.assetId, entry.item.image);
+      this.imageVersions.set(file.assetId, file.version);
+      this.bakedOperations.delete(id);
+      changed = true;
+    }
+    if (changed) {
+      this.history = [];
+      this.redoHistory = [];
+      this.changed();
+      if (!this.baking)
+        this.bakeStatus =
+          "確認できた元素材を編集内容へ反映しました。編集用JSONは未保存です。「保存する」を選んでください。";
+    }
+  }
   private async exportPng() {
     if ("tilesets" in this.project) return;
+    if (!this.ensureBakeResults()) return;
+    const cancellation = app.cancellationToken;
     const name = this.project.name.trim() || (await askName());
-    if (!name) return;
+    if (!name || !this.isConnected || cancellation !== app.cancellationToken) return;
     await app.run(async () => {
       app.requireConnected();
       await this.loadImages();
@@ -980,6 +1101,9 @@ export class EditorPage extends LitElement {
         ),
       );
       const id = uid();
+      const sha256 = await hashBlob(blob);
+      if (!this.isConnected || cancellation !== app.cancellationToken)
+        throw new DOMException("保存を取り消しました。", "AbortError");
       await app.startOperation(
         "upload",
         [
@@ -991,7 +1115,7 @@ export class EditorPage extends LitElement {
               assetId: id,
               type: "image",
               tagIds: [],
-              sha256: await hashBlob(blob),
+              sha256,
             },
           },
         ],
@@ -1012,6 +1136,7 @@ export class EditorPage extends LitElement {
       )
         throw new Error("描画サイズが大きすぎます。");
       project.id = uid();
+      this.clearBakeState();
       this.version = undefined;
       this.project = project as EditorProject;
       this.layerId = this.project.layers[0]?.id || "";
@@ -1089,7 +1214,7 @@ export class EditorPage extends LitElement {
       </div>
       ${missing.length ? html`<div class="notice error" style="margin-bottom:16px">${missing.length}件の素材が見つかりません。${map ? "編集と保存を続けられます。各レイヤーの素材パレットで差し替えできます。" : "レイヤーの素材を差し替えるか削除してください。"}</div>` : ""}
       ${this.bakeStatus ? html`<p class="notice" role="status">${this.bakeStatus}</p>` : ""}
-      <div class="workspace" ?inert=${this.baking}>
+      <div class="workspace" ?inert=${this.baking || this.hasPendingBakeLayers()}>
         <aside class="tools">
           <h3>${icon("image", 15)} 素材パレット</h3>
           <asset-palette

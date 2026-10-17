@@ -181,13 +181,14 @@ test("background upload, split, saved JSON, thumbnails, multitrack sound and mis
 async function setup(page: Page) {
   return page.evaluate(async () => {
     const { app, storage } = await import("/src/application/asset-service.ts");
+    const { ApiError } = await import("/src/storage/http-asset-storage.ts");
     await app.init();
     type FileRecord = import("/src/domain/models.ts").StoredFile;
     const files = new Map<string, { file: FileRecord; blob: Blob }>();
     Object.defineProperty(storage, "connected", { get: () => true });
     storage.createFile = async (input) => {
       const file: FileRecord = {
-        fileId: `storage-${input.metadata.assetId}`,
+        fileId: input.metadata.assetId,
         type: "image",
         mimeType: input.content.type,
         size: input.content.size,
@@ -207,14 +208,14 @@ async function setup(page: Page) {
     };
     storage.getMetadata = async (id) => {
       const f = files.get(id);
-      if (!f) throw new Error("missing");
+      if (!f) throw new ApiError("missing", 404);
       return f.file;
     };
 
-    storage.updateContent = async (id, blob, version) => {
+    storage.updateContent = async (id, blob, version, metadata = {}) => {
       const old = files.get(id);
       if (!old || old.file.version !== version) throw new Error("conflict");
-      const file = { ...old.file, version: String(Number(version) + 1) };
+      const file = { ...old.file, ...metadata, version: String(Number(version) + 1) };
       files.set(id, { file, blob });
       return file;
     };
@@ -232,6 +233,10 @@ async function setup(page: Page) {
     storage.trashFile = async (id) => {
       files.delete(id);
     };
+    storage.listManagedFiles = async () => ({
+      files: [...files.values()].map((item) => item.file),
+    });
+    storage.listTags = async () => app.tags;
     app.changed();
     const canvas = document.createElement("canvas");
     canvas.width = 32;
@@ -245,7 +250,7 @@ async function setup(page: Page) {
   });
 }
 
-test("save as keeps independent assets, undo never changes identity, and opening ignores local drafts", async ({
+test("save as keeps independent assets, undo never changes identity, and opening reads saved JSON", async ({
   page,
 }) => {
   await page.goto("/");
@@ -273,16 +278,9 @@ test("save as keeps independent assets, undo never changes identity, and opening
   await expect(page.getByText("保存済み", { exact: true })).toBeVisible();
   const files = await page.evaluate(async () => {
     const { app } = await import("/src/application/asset-service.ts");
-    const { db } = await import("/src/database/db.ts");
     const files = app.files.filter((f) => f.tagIds.includes("editor-sound"));
     const first = files[0];
     const data = await app.openProject(first);
-    await db.projects.put({
-      projectId: first.assetId,
-      data: { ...data, name: "古いローカル下書き" },
-      dirty: true,
-      kind: "sound",
-    });
     return {
       files: files.map((f) => ({ id: f.assetId, version: f.version })),
       first: first.assetId,
@@ -299,7 +297,7 @@ test("save as keeps independent assets, undo never changes identity, and opening
   await expect(page.locator("asset-card")).toHaveCount(0);
 });
 
-test("uploads continue while navigating and do not open a confirmation dialog", async ({
+test("upload navigation offers staying or cancelling before moving without further writes", async ({
   page,
 }) => {
   await page.goto("/");
@@ -307,11 +305,16 @@ test("uploads continue while navigating and do not open a confirmation dialog", 
   await page.evaluate(async () => {
     const { storage } = await import("/src/application/asset-service.ts");
     const create = storage.createFile.bind(storage);
-    storage.createFile = async (input) => {
-      await new Promise<void>((resolve) => {
+    storage.createFile = async (input, signal) => {
+      const active = signal || storage.writeSignal;
+      active.throwIfAborted();
+      Reflect.set(window, "uploadAttempts", (Reflect.get(window, "uploadAttempts") || 0) + 1);
+      await new Promise<void>((resolve, reject) => {
         (window as unknown as { finishUpload: () => void }).finishUpload = resolve;
+        active.addEventListener("abort", () => reject(active.reason), { once: true });
       });
-      return create(input);
+      active.throwIfAborted();
+      return create(input, active);
     };
   });
   await page.locator("#upload").setInputFiles({
@@ -322,6 +325,11 @@ test("uploads continue while navigating and do not open a confirmation dialog", 
   await expect(page.getByText(/素材を登録中/)).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.getByRole("button", { name: "マップエディター", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "未完了の操作" })).toBeVisible();
+  await page.getByRole("button", { name: "この画面に留まる", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "素材ライブラリ" })).toBeVisible();
+  await page.getByRole("button", { name: "マップエディター", exact: true }).click();
+  await page.getByRole("button", { name: "未送信分を取り消して移動", exact: true }).click();
   await expect(page.getByRole("heading", { name: "マップエディター", exact: true })).toBeVisible();
   await expect
     .poll(() =>
@@ -330,9 +338,9 @@ test("uploads continue while navigating and do not open a confirmation dialog", 
     .toBe("function");
   await page.evaluate(() => (window as unknown as { finishUpload: () => void }).finishUpload());
   await expect(page.getByText(/素材を登録中/)).toHaveCount(0);
-  await expect(page.locator("asset-thumbnail img")).toBeVisible();
+  expect(await page.evaluate(() => Reflect.get(window, "uploadAttempts"))).toBe(1);
   await page.getByRole("button", { name: /素材ライブラリ/ }).click();
   await expect(
     page.getByRole("button", { name: "background.png の詳細", exact: true }),
-  ).toBeVisible();
+  ).toHaveCount(0);
 });

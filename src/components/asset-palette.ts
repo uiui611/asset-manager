@@ -1,4 +1,5 @@
 import { css, html, LitElement } from "lit";
+import { repeat } from "lit/directives/repeat.js";
 import { app, storage } from "../application/asset-service";
 import { isRaster, type StoredFile, type Tag } from "../domain/models";
 import { AssetSearch } from "../domain/search";
@@ -117,22 +118,26 @@ export class AssetPalette extends LitElement {
       </div>
       <div class="count">${files.length} 件</div>
       <div class="list">
-        ${files.map((f) => {
-          const active = this.multiple
-            ? this.selection.includes(f.assetId)
-            : this.selected === f.assetId;
-          return html`<button
-            class=${active ? "active" : ""}
-            aria-pressed=${active}
-            aria-label=${f.name}
-            title=${f.name}
-            ?disabled=${!storage.connected}
-            @click=${() => this.dispatchEvent(new CustomEvent("pick-asset", { detail: f, bubbles: true, composed: true }))}
-          >
-            <asset-thumbnail .file=${f}></asset-thumbnail
-            ><span>${f.name}</span>${this.multiple && active ? html`<span>✓</span>` : ""}
-          </button>`;
-        })}
+        ${repeat(
+          files,
+          (file) => file.assetId,
+          (f) => {
+            const active = this.multiple
+              ? this.selection.includes(f.assetId)
+              : this.selected === f.assetId;
+            return html`<button
+              class=${active ? "active" : ""}
+              aria-pressed=${active}
+              aria-label=${f.name}
+              title=${f.name}
+              ?disabled=${!storage.connected}
+              @click=${() => this.dispatchEvent(new CustomEvent("pick-asset", { detail: f, bubbles: true, composed: true }))}
+            >
+              <asset-thumbnail .file=${f}></asset-thumbnail
+              ><span>${f.name}</span>${this.multiple && active ? html`<span>✓</span>` : ""}
+            </button>`;
+          },
+        )}
       </div>
       ${!files.length ? html`<p class="muted">条件に一致する画像がありません。</p>` : ""}`;
   }

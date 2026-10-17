@@ -31,6 +31,21 @@ context 名は環境に合わせて変更します。Windows に diff がない�
 
 `/asset-manager/healthz` はプロセス生存、`/asset-manager/readyz` は DB 到達を確認します。通常の更新では初期化や素材の削除を行いません。
 
+## 既存Nginxの再送・切断設定
+
+アプリの自動再試行廃止に合わせ、既存環境の `/home/mizu/containers/nginx.conf` の `location /asset-manager/` に次を明示します。イメージ更新だけではNginx設定は変わりません。先に現地の `/home/mizu/containers/AGENTS.md` と現在の差分を読み、対象locationだけを編集します。既存環境では `configure-proxy.py` やbootstrapを再実行しません。
+
+```nginx
+proxy_request_buffering off;
+proxy_buffering off;
+proxy_next_upstream off;
+proxy_ignore_client_abort off;
+```
+
+`proxy_next_upstream off` は接続失敗・タイムアウト時の別upstreamへの再送を禁止します。`proxy_ignore_client_abort off` はクライアント切断時にupstream接続を閉じます。ほかのlocationと既存のヘッダー・容量・タイムアウト設定は維持し、稼働中のNginxと同じ設定・環境で構文検証と差分確認を済ませてからreloadします。
+
+Rust側のS3 SDK再試行はコードで `RetryConfig.max_retries = 0` に固定しており、環境変数の変更は不要です。ページ離脱時にブラウザは要求を中断して未送信分を破棄しますが、すでに受理済みのS3・DB書き込みのrollbackは保証しません。再起動時に以前の操作は復旧せず、一覧からサーバー上の結果を確認します。旧IndexedDBの操作記録も読み込み・移行・削除しません。
+
 ## 新規環境のみ
 
 以下は復元資料です。既存環境のイメージ更新や GitHub 移行時には実行しません。

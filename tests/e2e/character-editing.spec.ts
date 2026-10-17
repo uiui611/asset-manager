@@ -5,6 +5,7 @@ async function setup(page: Page) {
   await expect(page.getByRole("heading", { name: "キャラクター合成", exact: true })).toBeVisible();
   await page.evaluate(async () => {
     const { app, storage } = await import("/src/application/asset-service.ts");
+    const { ApiError } = await import("/src/storage/http-asset-storage.ts");
     await app.init();
     Object.defineProperty(storage, "connected", { get: () => true });
     const canvas = document.createElement("canvas");
@@ -22,6 +23,8 @@ async function setup(page: Page) {
     type FileRecord = import("/src/domain/models.ts").StoredFile;
     const files = new Map<string, { file: FileRecord; blob: Blob }>();
     storage.createFile = async (input) => {
+      if (input.content.type.includes("json"))
+        Reflect.set(window, "jsonWrites", (Reflect.get(window, "jsonWrites") || 0) + 1);
       if (input.content.type.includes("json") && Reflect.get(window, "failJson"))
         throw new Error("JSON保存エラー");
       const file = {
@@ -44,14 +47,24 @@ async function setup(page: Page) {
       return item.blob;
     };
     storage.getMetadata = async (id) => {
+      const reads = Reflect.get(window, "metadataReads") || {};
+      reads[id] = (reads[id] || 0) + 1;
+      Reflect.set(window, "metadataReads", reads);
       const item = files.get(id);
-      if (!item) throw new Error("missing");
+      if (!item) throw new ApiError("missing", 404);
       return item.file;
     };
     storage.updateContent = async (id, content, version, metadata = {}) => {
+      const writes = Reflect.get(window, "contentWrites") || {};
+      writes[id] = (writes[id] || 0) + 1;
+      Reflect.set(window, "contentWrites", writes);
       const item = files.get(id);
       if (!item || item.file.version !== version) throw new Error("conflict");
-      if (Reflect.get(window, "failAsset") === id) throw new Error("通信エラー");
+      if (Reflect.get(window, "failAsset") === id) throw new ApiError("保存を拒否しました。", 409);
+      if (Reflect.get(window, "rateLimitAsset") === id) {
+        Reflect.deleteProperty(window, "rateLimitAsset");
+        throw new ApiError("しばらく待って再試行してください。", 429);
+      }
       const { hashBlob } = await import("/src/application/media.ts");
       const file = {
         ...item.file,
@@ -76,6 +89,10 @@ async function setup(page: Page) {
       files.set(id, { ...item, file });
       return file;
     };
+    storage.listManagedFiles = async () => ({
+      files: [...files.values()].map((item) => item.file),
+    });
+    storage.listTags = async () => app.tags;
     await app.putFile(
       await storage.createFile({
         content: blob,
@@ -212,7 +229,6 @@ test("baking overwrites source PNGs, normalizes and saves JSON, and preserves co
 }) => {
   await prepareComposition(page);
   const before = await pixels(page);
-  await page.evaluate(() => Reflect.set(window, "lostResponse", "overlay"));
   await bake(page);
   await expect(page.getByText("2件の元素材とJSONを保存しました。", { exact: true })).toBeVisible();
   await expect(page.getByRole("alert")).toHaveCount(0);
@@ -281,13 +297,31 @@ test("baking rejects duplicate or missing references without touching sources", 
     }),
   ).toBe("1");
 });
-test("partial overwrite failure saves normalized successes and retains failed layer transforms", async ({
+test("partial overwrite failure keeps normalized successes unsaved until explicit JSON save", async ({
   page,
 }) => {
   await prepareComposition(page);
   await page.evaluate(() => Reflect.set(window, "failAsset", "overlay"));
   await bake(page);
   await expect(page.getByRole("alert")).toContainText("1 / 2 件");
+  expect(await page.evaluate(() => Reflect.get(window, "jsonWrites") || 0)).toBe(0);
+  expect(
+    await page.evaluate(async () =>
+      (await import("/src/application/asset-service.ts")).app.files.some(
+        (file) => file.name === "baked.json",
+      ),
+    ),
+  ).toBe(false);
+  const current = await page
+    .locator("editor-page")
+    .evaluate(
+      (element) => (element as import("/src/pages/editor/editor-page.ts").EditorPage).project,
+    );
+  expect("layers" in current && "x" in current.layers[0] && current.layers[0].x).toBe(0);
+  expect("layers" in current && "x" in current.layers[1] && current.layers[1].x).toBe(30);
+  await page.getByRole("button", { name: "保存する", exact: true }).click();
+  await expect(page.getByText("保存済み", { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => Reflect.get(window, "jsonWrites"))).toBe(1);
   const data = await page.evaluate(async () => {
     const { app } = await import("/src/application/asset-service.ts");
     const file = app.files.find((f) => f.name === "baked.json");
@@ -315,11 +349,14 @@ test("hidden layers are cropped without becoming visible and failed JSON save ca
   await expect(page.getByLabel("X座標", { exact: true })).toHaveValue("0");
   expect(visualDifference(await pixels(page), before)).toBeLessThanOrEqual(2);
   await page.getByRole("button", { name: "素材ライブラリ", exact: false }).click();
-  await expect(page.getByRole("dialog", { name: "未保存の変更" })).toBeVisible();
-  await page.getByRole("button", { name: "キャンセル", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "未完了の操作" })).toBeVisible();
+  await page.getByRole("button", { name: "この画面に留まる", exact: true }).click();
   await page.evaluate(() => Reflect.set(window, "failJson", false));
-  await page.getByRole("button", { name: "保存する", exact: true }).click();
-  await expect(page.getByText("保存済み", { exact: true })).toBeVisible();
+  const operation = page.getByRole("article", { name: "素材の登録の操作結果", exact: true });
+  await operation.getByRole("button", { name: "結果を確認", exact: true }).click();
+  await operation.getByRole("button", { name: /^再試行/ }).click();
+  await expect(operation.getByText("素材の登録 · 完了", { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => Reflect.get(window, "jsonWrites"))).toBe(2);
   const layer = await page.evaluate(async () => {
     const { app, storage } = await import("/src/application/asset-service.ts");
     const file = app.files.find((f) => f.name === "baked.json");
@@ -332,4 +369,86 @@ test("hidden layers are cropped without becoming visible and failed JSON save ca
   });
   expect(layer.visible).toBe(false);
   expect(layer.version).toBe("2");
+});
+
+test("lost overwrite response requires explicit checking before normalization and JSON save", async ({
+  page,
+}) => {
+  await prepareComposition(page);
+  const before = await pixels(page);
+  await page.evaluate(() => Reflect.set(window, "lostResponse", "overlay"));
+  await bake(page);
+  await expect(page.getByRole("alert")).toContainText("1 / 2 件");
+  const operation = page
+    .getByRole("article", { name: "保存の操作結果", exact: true })
+    .filter({ hasText: "結果不明" });
+  await expect(operation.getByRole("button", { name: "結果を確認", exact: true })).toBeVisible();
+  await expect(operation.getByRole("button", { name: "破棄", exact: true })).toHaveCount(0);
+  expect(await page.evaluate(() => Reflect.get(window, "jsonWrites") || 0)).toBe(0);
+  expect(await page.evaluate(() => Reflect.get(window, "metadataReads").overlay)).toBe(1);
+
+  for (const name of ["保存する", "合成PNGをストレージへ", "元素材を切り出して上書き"]) {
+    await page.getByRole("button", { name, exact: true }).click();
+    await expect(page.getByRole("alert")).toContainText("上書き結果が未確認");
+  }
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(await page.evaluate(() => Reflect.get(window, "contentWrites"))).toEqual({
+    base: 1,
+    overlay: 1,
+  });
+  expect(await page.evaluate(() => Reflect.get(window, "jsonWrites") || 0)).toBe(0);
+  expect(await page.evaluate(() => Reflect.get(window, "metadataReads").overlay)).toBe(1);
+
+  await operation.getByRole("button", { name: "結果を確認", exact: true }).click();
+  await expect(page.getByText(/確認できた元素材を編集内容へ反映しました/)).toBeVisible();
+  await expect(page.getByLabel("X座標", { exact: true })).toHaveValue("0");
+  await expect(page.getByLabel("横倍率", { exact: true })).toHaveValue("1");
+  expect(await page.evaluate(() => Reflect.get(window, "metadataReads").overlay)).toBe(2);
+  expect(await page.evaluate(() => Reflect.get(window, "contentWrites"))).toEqual({
+    base: 1,
+    overlay: 1,
+  });
+  expect(await page.evaluate(() => Reflect.get(window, "jsonWrites") || 0)).toBe(0);
+  expect(visualDifference(await pixels(page), before)).toBeLessThanOrEqual(2);
+  expect(
+    await page
+      .locator("editor-page")
+      .evaluate((element) =>
+        (Reflect.get(element, "imageVersions") as Map<string, string>).get("overlay"),
+      ),
+  ).toBe("2");
+
+  await page.getByRole("button", { name: "保存する", exact: true }).click();
+  await expect(page.getByText("保存済み", { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => Reflect.get(window, "jsonWrites"))).toBe(1);
+  expect(await page.evaluate(() => Reflect.get(window, "contentWrites"))).toEqual({
+    base: 1,
+    overlay: 1,
+  });
+});
+
+test("explicit retry of an unsaved layer normalizes it without automatically saving JSON", async ({
+  page,
+}) => {
+  await prepareComposition(page);
+  const before = await pixels(page);
+  await page.evaluate(() => Reflect.set(window, "rateLimitAsset", "overlay"));
+  await bake(page);
+  await expect(page.getByRole("alert")).toContainText("1 / 2 件");
+  const operation = page
+    .getByRole("article", { name: "保存の操作結果", exact: true })
+    .filter({ hasText: "失敗" });
+  expect(await page.evaluate(() => Reflect.get(window, "jsonWrites") || 0)).toBe(0);
+  await operation.getByRole("button", { name: /^再試行/ }).click();
+  await expect(page.getByText(/確認できた元素材を編集内容へ反映しました/)).toBeVisible();
+  await expect(page.getByLabel("X座標", { exact: true })).toHaveValue("0");
+  expect(await page.evaluate(() => Reflect.get(window, "contentWrites"))).toEqual({
+    base: 1,
+    overlay: 2,
+  });
+  expect(await page.evaluate(() => Reflect.get(window, "jsonWrites") || 0)).toBe(0);
+  expect(visualDifference(await pixels(page), before)).toBeLessThanOrEqual(2);
+  await page.getByRole("button", { name: "保存する", exact: true }).click();
+  await expect(page.getByText("保存済み", { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => Reflect.get(window, "jsonWrites"))).toBe(1);
 });

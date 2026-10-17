@@ -380,7 +380,7 @@ export class AssetApp extends LitElement {
                 </span>
               </div>
               <p>
-                ${storage.connected ? "素材はあなたのストレージへ。変更を同期して、制作の続きを。" : "プライベートストレージを、ゲームづくりの素材ライブラリに。"}
+                ${storage.connected ? "素材はあなたのストレージへ。保存結果を確認して、制作の続きを。" : "プライベートストレージを、ゲームづくりの素材ライブラリに。"}
               </p>
               <button
                 ?disabled=${app.busy}
@@ -415,8 +415,8 @@ export class AssetApp extends LitElement {
               ? html`
                   <div class="statusbar" role="status">
                     <span
-                      >素材を登録中 · ${app.uploadTotal - app.uploads} / ${app.uploadTotal}
-                      件完了（ほかの操作を続けられます）</span
+                      >素材を登録中 ·
+                      進捗と結果は操作一覧で確認できます。この画面に留まってください。</span
                     >
                   </div>
                 `
@@ -450,7 +450,7 @@ export class AssetApp extends LitElement {
               : ""
           }
           <main class="content">
-            <operation-progress> </operation-progress>${
+            ${this.page === "settings" ? "" : html`<operation-progress></operation-progress>`}${
               this.ready
                 ? this.page === "assets"
                   ? html` <assets-page> </assets-page> `

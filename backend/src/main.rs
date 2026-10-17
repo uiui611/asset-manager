@@ -479,6 +479,12 @@ async fn ready(State(a): State<App>) -> Result<&'static str> {
         .map_err(internal)?;
     Ok("ok")
 }
+fn s3_builder() -> AmazonS3Builder {
+    AmazonS3Builder::new().with_retry(object_store::RetryConfig {
+        max_retries: 0,
+        ..Default::default()
+    })
+}
 #[tokio::main]
 async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let cfg: tokio_postgres::Config = env::var("DATABASE_URL")?.parse()?;
@@ -492,7 +498,7 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             .await?;
         return Ok(());
     }
-    let objects = AmazonS3Builder::new()
+    let objects = s3_builder()
         .with_bucket_name(env::var("S3_BUCKET")?)
         .with_region("us-east-1")
         .with_endpoint(env::var("S3_ENDPOINT")?)
@@ -545,6 +551,46 @@ fn mount(base: &str, routes: Router, static_dir: &str) -> Router {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn s3_failure_does_not_retry_the_request() {
+        use std::{
+            sync::atomic::{AtomicUsize, Ordering},
+            time::Duration,
+        };
+
+        let requests = Arc::new(AtomicUsize::new(0));
+        let observed = requests.clone();
+        let router = Router::new().fallback(move || {
+            observed.fetch_add(1, Ordering::SeqCst);
+            async { StatusCode::SERVICE_UNAVAILABLE }
+        });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+        let objects = s3_builder()
+            .with_bucket_name("test")
+            .with_region("us-east-1")
+            .with_endpoint(endpoint)
+            .with_allow_http(true)
+            .with_access_key_id("test")
+            .with_secret_access_key("test")
+            .build()
+            .unwrap();
+
+        let result = tokio::time::timeout(
+            Duration::from_secs(2),
+            objects.put(&ObjectPath::from("asset"), "test".into()),
+        )
+        .await;
+        server.abort();
+
+        assert!(
+            result
+                .expect("S3 failure must surface without retry")
+                .is_err()
+        );
+        assert_eq!(requests.load(Ordering::SeqCst), 1);
+    }
     #[tokio::test]
     async fn mounted_root_and_api_are_reachable() {
         use tower::ServiceExt;

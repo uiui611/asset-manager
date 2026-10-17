@@ -1,96 +1,67 @@
 import { sanitizeSvg, thumbnail } from "../canvas/images";
-import { db } from "../database/db";
 import { editorKind } from "../domain/library";
 import { imageMime } from "../domain/media-type";
-import { encodeProperties, referenceIds, validateWriteSize } from "../domain/metadata";
+import { referenceIds, validateMetadata, validateWriteSize } from "../domain/metadata";
 import {
-  type JournalItem,
   type Kind,
   now,
-  type OperationJournal,
+  type Operation,
+  type OperationItem,
   type Project,
   type StoredFile,
   type Tag,
   uid,
 } from "../domain/models";
-import { tagName } from "../domain/tags";
+import { automaticTagIds, tagName } from "../domain/tags";
 import { validateProject } from "../schemas/projects";
-import { HttpAssetStorage } from "../storage/http-asset-storage";
+import { ApiError, HttpAssetStorage } from "../storage/http-asset-storage";
 import { Limiter } from "./limiter";
 import { hashBlob, jsonBlob, validateImport } from "./media";
 import { SyncService } from "./sync";
+
 export const storage = new HttpAssetStorage();
+const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
+const unfinished = (operation: Operation) => !["completed", "cancelled"].includes(operation.status);
 export class AssetService extends EventTarget {
   busy = false;
   uploads = 0;
   uploadTotal = 0;
   transfers: { id: string; label: string; done: number; total: number }[] = [];
-  private writes = new Limiter(2);
-  private deletes = new Limiter(4);
-  private running = new Map<string, Promise<void>>();
-  private uploadQueue = Promise.resolve();
-  enqueueImport(files: File[]) {
-    try {
-      validateWriteSize(files.map((f) => f.size));
-    } catch (error) {
-      this.error = String(error);
-      this.changed();
-      return Promise.resolve();
-    }
-    if (!this.uploads) this.uploadTotal = 0;
-    this.uploadTotal += files.length;
-    this.uploads += files.length;
-    this.changed();
-    this.uploadQueue = this.uploadQueue.then(async () => {
-      const queue = [...files];
-      await Promise.all(
-        Array.from({ length: Math.min(2, files.length) }, async () => {
-          while (queue.length) {
-            const file = queue.shift();
-            if (!file) return;
-            try {
-              const prepared = await this.prepareImport([file]);
-              await this.startOperation("upload", prepared.items);
-            } catch (error) {
-              this.error = `${file.name}: ${error instanceof Error ? error.message : String(error)}`;
-            } finally {
-              this.uploads--;
-              await this.refresh();
-            }
-          }
-        }),
-      );
-    });
-    return this.uploadQueue;
-  }
+  operations: Operation[] = [];
   status = "";
   error = "";
   files: StoredFile[] = [];
   tags: Tag[] = [];
-  lastSync = "";
   private cancellation = 0;
+  private departureGeneration = 0;
+  private revision = 0;
+  private listGeneration = 0;
+  private runGeneration = 0;
+  private writes = new Limiter(2);
+  private deletes = new Limiter(4);
+  private running = new Map<string, Promise<boolean>>();
+  private controllers = new Map<string, AbortController>();
   private thumbnailQueue = new Limiter(4);
+  private thumbnails = new Map<string, Blob>();
+  private thumbnailRequests = new Map<string, Promise<Blob | undefined>>();
+  private thumbnailFailures = new Set<string>();
+  private thumbnailBytes = 0;
+  get hasUnfinishedOperations() {
+    return this.busy || this.uploads > 0 || this.operations.some(unfinished);
+  }
+  get cancellationToken() {
+    return this.cancellation;
+  }
   changed() {
     this.dispatchEvent(new Event("change"));
   }
   async init() {
-    await this.refresh();
+    this.changed();
     if (import.meta.env.MODE !== "e2e") await this.connect();
   }
   async refresh() {
-    const generation = ++this.refreshGeneration;
-    const [files, tags, lastSync] = await Promise.all([
-      db.assets.toArray(),
-      db.tags.toArray(),
-      db.syncState.get("lastSync"),
-    ]);
-    if (generation !== this.refreshGeneration) return;
-    this.files = files;
-    this.tags = tags;
-    this.lastSync = lastSync?.value || "";
     this.changed();
   }
-  private refreshGeneration = 0;
   async whenIdle() {
     if (!this.busy) return;
     await new Promise<void>((resolve) => {
@@ -106,18 +77,23 @@ export class AssetService extends EventTarget {
   }
   async run<T>(action: () => Promise<T>): Promise<T | undefined> {
     if (this.busy) return;
+    const token = this.cancellation;
+    const run = ++this.runGeneration;
     this.busy = true;
     this.error = "";
     this.changed();
     try {
-      return await action();
+      const result = await action();
+      return token === this.cancellation ? result : undefined;
     } catch (error) {
-      this.error = error instanceof Error ? error.message : String(error);
+      if (token === this.cancellation) this.error = message(error);
       return undefined;
     } finally {
-      this.busy = false;
-      this.status = "";
-      await this.refresh();
+      if (run === this.runGeneration) {
+        this.busy = false;
+        this.status = "";
+        this.changed();
+      }
     }
   }
   progress(text: string) {
@@ -125,14 +101,15 @@ export class AssetService extends EventTarget {
     this.changed();
   }
   requireConnected() {
-    if (!storage.connected) throw new Error("ストレージ に接続してから保存してください。");
-    if (!navigator.onLine)
-      throw new Error("オフラインです。画面を閉じず、接続後に保存してください。");
+    if (!storage.connected) throw new Error("ストレージに接続してから保存してください。");
+    if (!navigator.onLine) throw new Error("オフラインです。接続後に再試行してください。");
   }
   async connect() {
     await this.run(async () => {
-      await storage.authenticate();
-      await this.syncInternal();
+      const token = this.cancellation;
+      const signal = storage.writeSignal;
+      await storage.authenticate(signal);
+      if (token === this.cancellation) await this.syncInternal();
     });
   }
   async sync() {
@@ -140,38 +117,84 @@ export class AssetService extends EventTarget {
   }
   private async syncInternal() {
     this.requireConnected();
-    await new SyncService(db, storage).sync((s) => this.progress(s));
-    const tags = await storage.listTags();
-    await db.tags.clear();
-    await db.tags.bulkPut(tags);
+    const generation = ++this.listGeneration;
+    const revision = this.revision;
+    const token = this.cancellation;
+    const signal = storage.writeSignal;
+    const files = await new SyncService(storage).sync((text) => this.progress(text), signal);
+    const tags = await storage.listTags(signal);
+    signal.throwIfAborted();
+    if (
+      generation !== this.listGeneration ||
+      revision !== this.revision ||
+      token !== this.cancellation
+    )
+      return;
+    this.files = files;
+    this.tags = tags;
+    this.thumbnailFailures.clear();
+    const versions = new Set(files.map((file) => `${file.assetId}:${file.version}`));
+    for (const [key, blob] of this.thumbnails)
+      if (!versions.has(key)) {
+        this.thumbnailBytes -= blob.size;
+        this.thumbnails.delete(key);
+      }
+    this.changed();
   }
   async putFile(file: StoredFile) {
-    await db.transaction("rw", [db.assets, db.fileMap], async () => {
-      await db.assets.put(file);
-      await db.fileMap.put({
-        fileId: file.fileId,
-        assetId: file.assetId,
-      });
-    });
+    this.revision++;
+    this.files = [...this.files.filter((old) => old.assetId !== file.assetId), file];
+    this.changed();
   }
   async createTag(name: string) {
     this.requireConnected();
     const normalized = tagName(name);
-    const existing = this.tags.find((t) => t.name === normalized);
+    const existing = this.tags.find((tag) => tag.name === normalized);
     if (existing) return existing;
-    const tag = await storage.createTag(normalized);
-    await db.tags.put(tag);
-    await this.refresh();
+    const token = this.cancellation;
+    const tag = await storage.createTag(normalized, storage.writeSignal);
+    if (token !== this.cancellation) throw new DOMException("操作を取り消しました。", "AbortError");
+    this.revision++;
+    this.tags = [...this.tags.filter((old) => old.tagId !== tag.tagId), tag];
+    this.changed();
     return tag;
+  }
+  async enqueueImport(files: File[]) {
+    const token = this.cancellation;
+    const departure = this.departureGeneration;
+    try {
+      validateWriteSize(files.map((file) => file.size));
+      this.uploadTotal = files.length;
+      this.uploads += files.length;
+      this.changed();
+      const prepared = await this.prepareImport(files);
+      if (token !== this.cancellation) return;
+      await this.startOperation("upload", prepared.items);
+    } catch (error) {
+      if (token === this.cancellation) this.error = message(error);
+    } finally {
+      if (departure === this.departureGeneration) {
+        this.uploads = Math.max(0, this.uploads - files.length);
+        this.changed();
+      }
+    }
   }
   async prepareImport(files: File[]) {
     this.requireConnected();
-    validateWriteSize(files.map((f) => f.size));
-    const items: JournalItem[] = [];
+    const token = this.cancellation;
+    validateWriteSize(files.map((file) => file.size));
+    const items: OperationItem[] = [];
     for (const file of files) {
+      if (token !== this.cancellation)
+        throw new DOMException("操作を取り消しました。", "AbortError");
       this.progress(`${file.name} を確認中`);
-      const { blob, type } = await validateImport(file);
-      const sha256 = await hashBlob(blob);
+      const fileError = (error: unknown): never => {
+        throw new Error(`${file.name}: ${message(error)}`);
+      };
+      const { blob, type } = await validateImport(file).catch(fileError);
+      const sha256 = await hashBlob(blob).catch(fileError);
+      if (token !== this.cancellation)
+        throw new DOMException("操作を取り消しました。", "AbortError");
       const id = uid();
       items.push({
         id,
@@ -188,185 +211,342 @@ export class AssetService extends EventTarget {
         },
       });
     }
-    validateWriteSize(items.map((i) => i.blob?.size || 0));
+    validateWriteSize(items.map((item) => item.blob?.size || 0));
     return { items };
   }
   async startOperation(
-    type: OperationJournal["type"],
-    items: JournalItem[],
+    type: Operation["type"],
+    items: OperationItem[],
     sourceAssetIds: string[] = [],
+    onCreated?: (operation: Operation) => void,
   ) {
     this.requireConnected();
-    validateWriteSize(items.map((i) => i.blob?.size || 0));
-    for (const i of items) if (i.metadata) encodeProperties(i.metadata);
-    const journal: OperationJournal = {
+    const targets = new Set(items.flatMap((item) => [item.id, item.fileId || item.id]));
+    if (
+      this.operations.some(
+        (operation) =>
+          unfinished(operation) &&
+          operation.items.some(
+            (item) =>
+              item.status !== "completed" &&
+              item.status !== "cancelled" &&
+              (targets.has(item.id) || targets.has(item.fileId || item.id)),
+          ),
+      )
+    )
+      throw new Error(
+        "この素材には未完了の操作があります。操作パネルで結果を確認、再試行、または取り消してから保存してください。",
+      );
+    validateWriteSize(items.map((item) => item.blob?.size || 0));
+    for (const item of items) if (item.metadata) validateMetadata(item.metadata);
+    const operation: Operation = {
       id: uid(),
       type,
       status: "pending",
-      sourceAssetIds,
+      canRetry: true,
+      sourceAssetIds: [...sourceAssetIds],
       completedItems: [],
-      pendingItems: items.map((i) => i.id),
-      items,
+      pendingItems: items.map((item) => item.id),
+      items: items.map((item) => ({
+        ...item,
+        metadata: item.metadata ? structuredClone(item.metadata) : undefined,
+        expectedVersion:
+          item.expectedVersion ||
+          item.metadata?.version ||
+          this.files.find((file) => file.assetId === item.id)?.version,
+        status: "pending",
+      })),
       createdAt: now(),
     };
-    await this.persistJournal(journal);
-    await this.resume(journal.id);
-    return (await db.operationJournal.get(journal.id))?.status === "completed";
-  }
-  get cancellationToken() {
-    return this.cancellation;
+    this.operations = [...this.operations, operation];
+    onCreated?.(operation);
+    this.changed();
+    return this.executeOperation(operation);
   }
   cancel() {
     this.cancellation++;
-    this.progress("現在のファイルの完了後に中断します");
+    this.progress("送信済みの結果を確認して中断します");
   }
-  private async persistJournal(journal: OperationJournal) {
-    try {
-      await db.operationJournal.put(journal);
-    } catch (error) {
-      if (
-        !(error instanceof Error) ||
-        !["UnknownError", "DataCloneError"].includes(error.name) ||
-        !journal.items.some((i) => i.blob)
-      )
-        throw error;
-      // Some WebKit ports cannot persist file-backed Blob objects. Binary bytes
-      // preserve the same recoverable payload without depending on a temp file.
-      for (const item of journal.items)
-        if (item.blob) {
-          item.bytes = await item.blob.arrayBuffer();
-          item.blobType = item.blob.type;
-          item.blob = undefined;
-        }
-      await db.operationJournal.put(journal);
+  discardOperation(id: string) {
+    const operation = this.operations.find((item) => item.id === id);
+    if (!operation) return;
+    this.controllers.get(id)?.abort();
+    if (operation.status === "completed")
+      this.operations = this.operations.filter((item) => item !== operation);
+    else {
+      operation.status = "cancelled";
+      operation.canRetry = false;
+      for (const item of operation.items) {
+        item.blob = undefined;
+        if (item.status !== "completed") item.status = "cancelled";
+      }
+      operation.pendingItems = [];
     }
+    this.changed();
   }
-  resume(id: string): Promise<void> {
-    const existing = this.running.get(id);
+  discardUnfinished() {
+    this.cancellation++;
+    this.departureGeneration++;
+    this.runGeneration++;
+    storage.cancelWrites();
+    for (const operation of this.operations)
+      if (unfinished(operation)) this.discardOperation(operation.id);
+    this.uploads = 0;
+    this.busy = false;
+    this.status = "";
+    this.transfers = [];
+    this.changed();
+  }
+  private summarize(operation: Operation) {
+    if (operation.status === "cancelled") return;
+    operation.completedItems = operation.items
+      .filter((item) => item.status === "completed")
+      .map((item) => item.id);
+    operation.pendingItems = operation.items
+      .filter((item) => item.status !== "completed" && item.status !== "cancelled")
+      .map((item) => item.id);
+    const unknown = operation.items.some((item) => item.status === "unknown");
+    operation.status = !operation.pendingItems.length
+      ? "completed"
+      : unknown
+        ? "unknown"
+        : operation.items.some((item) => item.status === "failed")
+          ? "failed"
+          : "pending";
+    operation.canRetry =
+      !unknown &&
+      operation.items.some(
+        (item) =>
+          item.status === "pending" || (item.status === "failed" && item.retryable !== false),
+      );
+    operation.error = operation.items.find((item) => item.error)?.error;
+  }
+  private completeItem(item: OperationItem) {
+    item.status = "completed";
+    item.error = undefined;
+    item.resultCheck = undefined;
+    item.blob = undefined;
+  }
+  async retryOperation(id: string) {
+    const operation = this.operations.find((item) => item.id === id);
+    if (!operation) throw new Error("操作が見つかりません。");
+    if (operation.status === "unknown") throw new Error("先に保存結果を確認してください。");
+    if (!operation.canRetry || operation.status === "cancelled") return false;
+    return this.executeOperation(operation);
+  }
+  private executeOperation(operation: Operation): Promise<boolean> {
+    const existing = this.running.get(operation.id);
     if (existing) return existing;
-    const work = this.resumeInternal(id).finally(() => this.running.delete(id));
-    this.running.set(id, work);
+    const work = this.executeInternal(operation).finally(() => this.running.delete(operation.id));
+    this.running.set(operation.id, work);
     return work;
   }
-  private async resumeInternal(id: string) {
+  private async executeInternal(operation: Operation) {
     this.requireConnected();
-    const journal = await db.operationJournal.get(id);
-    if (!journal) throw new Error("操作が見つかりません。");
-    const cancellation = this.cancellation;
-    journal.status = "running";
-    journal.error = undefined;
-    await db.operationJournal.put(journal);
+    const controller = new AbortController();
+    this.controllers.set(operation.id, controller);
+    const token = this.cancellation;
+    const queue = operation.items.filter(
+      (item) => item.status === "pending" || (item.status === "failed" && item.retryable !== false),
+    );
+    const limit = operation.type === "bulk-trash" || operation.type === "bulk-tag" ? 4 : 2;
+    const limiter = limit === 4 ? this.deletes : this.writes;
+    let failed: unknown;
     const progress = {
-      id,
-      label: journal.type === "bulk-trash" ? "削除" : journal.type === "bulk-tag" ? "更新" : "保存",
-      done: journal.completedItems.length,
-      total: journal.completedItems.length + journal.pendingItems.length,
+      id: operation.id,
+      label:
+        operation.type === "bulk-trash" ? "削除" : operation.type === "bulk-tag" ? "更新" : "保存",
+      done: operation.completedItems.length,
+      total: operation.items.length,
     };
+    operation.status = "running";
+    operation.canRetry = false;
+    operation.error = undefined;
     this.transfers = [...this.transfers, progress];
     this.changed();
-    const queue = [...journal.pendingItems];
-    let failed: unknown;
-    let persist = Promise.resolve();
-    const limiter =
-      journal.type === "bulk-trash" || journal.type === "bulk-tag" ? this.deletes : this.writes;
     try {
       await Promise.all(
-        Array.from(
-          {
-            length: Math.min(
-              journal.type === "bulk-trash" || journal.type === "bulk-tag" ? 4 : 2,
-              queue.length,
-            ),
-          },
-          async () => {
-            while (queue.length && cancellation === this.cancellation && !failed) {
-              const itemId = queue.shift();
-              const item = journal.items.find((i) => i.id === itemId);
-              if (!item) {
-                failed = new Error("復旧データがありません。");
-                break;
-              }
+        Array.from({ length: Math.min(limit, queue.length) }, async () => {
+          while (
+            queue.length &&
+            token === this.cancellation &&
+            !controller.signal.aborted &&
+            !failed
+          ) {
+            const item = queue.shift();
+            if (!item) return;
+            await limiter.run(async () => {
+              if (token !== this.cancellation || controller.signal.aborted || failed) return;
+              item.status = "running";
+              item.error = undefined;
+              item.resultCheck = undefined;
+              this.changed();
               try {
-                await limiter.run(async () => {
-                  if (journal.type === "bulk-trash") {
-                    const cached = await db.assets.get(item.id);
-                    try {
-                      await storage.trashFile(
-                        item.fileId || "",
-                        cached?.version || item.metadata?.version,
-                      );
-                    } catch (e) {
-                      if (!(e instanceof Error) || !e.message.includes("(404)")) throw e;
-                    }
-                    await db.assets.delete(item.id);
-                    if (item.fileId) await db.fileMap.delete(item.fileId);
-                    await db.thumbnails.delete(item.id);
-                  } else if (journal.type === "bulk-tag") {
-                    const cached = await db.assets.get(item.id);
-                    await this.putFile(
-                      await storage.updateMetadata(
-                        item.fileId || "",
-                        item.metadata || {},
-                        cached?.version,
-                      ),
-                    );
-                  } else if ((item.blob || item.bytes) && item.metadata) {
-                    await this.putFile(
-                      await storage.createFile({
-                        content:
-                          item.blob ||
-                          new Blob([item.bytes as ArrayBuffer], {
-                            type: item.blobType,
-                          }),
-                        metadata: {
-                          ...item.metadata,
-                          assetId: item.id,
-                          name: item.name,
-                        },
-                      }),
-                    );
+                let stored: StoredFile | undefined;
+                if (operation.type === "bulk-trash") {
+                  await storage.trashFile(
+                    item.fileId || item.id,
+                    item.expectedVersion,
+                    controller.signal,
+                  );
+                  if (!controller.signal.aborted && operation.status !== "cancelled") {
+                    this.revision++;
+                    this.files = this.files.filter((file) => file.assetId !== item.id);
                   }
-                });
-                journal.completedItems.push(item.id);
-                journal.pendingItems = journal.pendingItems.filter((i) => i !== item.id);
-                item.blob = undefined;
-                item.bytes = undefined;
-                // Serialize journal checkpoints while independent network requests overlap.
-                persist = persist.then(() => this.persistJournal(journal));
-                await persist;
-                progress.done = journal.completedItems.length;
-                this.changed();
+                } else if (operation.type === "bulk-tag") {
+                  stored = await storage.updateMetadata(
+                    item.fileId || item.id,
+                    item.metadata || {},
+                    item.expectedVersion,
+                    controller.signal,
+                  );
+                } else {
+                  if (!item.blob || !item.metadata)
+                    throw new ApiError("送信するファイルがありません。", 400);
+                  const metadata = { ...item.metadata, assetId: item.id, name: item.name };
+                  stored =
+                    operation.type === "content-update"
+                      ? await storage.updateContent(
+                          item.fileId || item.id,
+                          item.blob,
+                          item.expectedVersion,
+                          metadata,
+                          controller.signal,
+                        )
+                      : await storage.createFile(
+                          { content: item.blob, metadata },
+                          controller.signal,
+                        );
+                }
+                if (controller.signal.aborted || operation.status === "cancelled") return;
+                if (stored) await this.putFile(stored);
+                this.completeItem(item);
+                operation.completedItems = operation.items
+                  .filter((entry) => entry.status === "completed")
+                  .map((entry) => entry.id);
+                operation.pendingItems = operation.items
+                  .filter((entry) => entry.status !== "completed" && entry.status !== "cancelled")
+                  .map((entry) => entry.id);
+                progress.done++;
               } catch (error) {
+                if (controller.signal.aborted || operation.status === "cancelled") return;
+                const unknown = !(error instanceof ApiError) || error.outcomeUnknown;
+                item.status = unknown ? "unknown" : "failed";
+                item.retryable = error instanceof ApiError && error.status === 429;
+                item.error = unknown
+                  ? `保存結果を確認できません。自動再送は行いません。${message(error)}`
+                  : message(error);
                 failed ??= error;
               }
-            }
-          },
-        ),
+              this.changed();
+            });
+          }
+        }),
       );
-      journal.status = failed ? "failed" : journal.pendingItems.length ? "pending" : "completed";
-      journal.error = failed
-        ? failed instanceof Error
-          ? failed.message
-          : String(failed)
-        : undefined;
-      if (journal.status === "completed") journal.items = [];
-      await this.persistJournal(journal);
+      this.summarize(operation);
       if (failed) throw failed;
+      return operation.items.every((item) => item.status === "completed");
     } finally {
-      this.transfers = this.transfers.filter((p) => p.id !== id);
+      this.controllers.delete(operation.id);
+      this.transfers = this.transfers.filter((item) => item.id !== operation.id);
       this.changed();
     }
   }
-  async update(file: StoredFile, name: string, description: string, tagIds: string[]) {
-    this.requireConnected();
-    if (!name.trim()) throw new Error("素材名を入力してください。");
-    await this.putFile(
-      await storage.updateMetadata(
-        file.fileId,
-        { name: name.trim(), description, tagIds },
-        file.version,
-      ),
+  private metadataMatches(current: StoredFile, expected: Partial<StoredFile>) {
+    if (expected.name !== undefined && current.name !== expected.name.trim()) return false;
+    // The API derives type, MIME and automatic tags from the normalized filename.
+    for (const key of ["description", "sha256"] as const)
+      if (expected[key] !== undefined && current[key] !== expected[key]) return false;
+    const userTags = (ids: string[]) =>
+      [...new Set(ids.filter((id) => !automaticTagIds.includes(id)))].sort();
+    return (
+      !expected.tagIds ||
+      JSON.stringify(userTags(current.tagIds)) === JSON.stringify(userTags(expected.tagIds))
     );
+  }
+  async checkOperation(id: string) {
+    if (this.running.has(id)) return;
+    const operation = this.operations.find((item) => item.id === id);
+    if (!operation || operation.status === "cancelled") return;
+    this.requireConnected();
+    const controller = new AbortController();
+    this.controllers.set(id, controller);
+    const work = (async () => {
+      for (const item of operation.items.filter((entry) => entry.status === "unknown")) {
+        if (controller.signal.aborted || operation.status === "cancelled") return false;
+        try {
+          const current = await storage.getMetadata(item.fileId || item.id, controller.signal);
+          if (controller.signal.aborted) return false;
+          let matches = operation.type !== "bulk-trash";
+          const expected = { ...item.metadata };
+          if (
+            operation.type === "upload" ||
+            operation.type === "tile-split" ||
+            operation.type === "content-update"
+          ) {
+            expected.name = item.name;
+            expected.description ??= "";
+            expected.tagIds ??= [];
+          }
+          if (item.blob) expected.sha256 = expected.sha256 || (await hashBlob(item.blob));
+          if (controller.signal.aborted) return false;
+          matches = matches && this.metadataMatches(current, expected);
+          if (matches) {
+            await this.putFile(current);
+            this.completeItem(item);
+          } else if (item.expectedVersion && current.version === item.expectedVersion) {
+            item.status = "failed";
+            item.resultCheck = "not-saved";
+            item.retryable = true;
+            item.error = "変更は保存されていません。再試行できます。";
+          } else {
+            item.status = "failed";
+            item.resultCheck = "mismatch";
+            item.retryable = false;
+            item.error = "現在の素材が送信内容と異なります。一覧を更新して内容を確認してください。";
+          }
+        } catch (error) {
+          if (controller.signal.aborted) return false;
+          if (error instanceof ApiError && error.status === 404) {
+            item.resultCheck = "mismatch";
+            if (operation.type === "bulk-trash") {
+              item.status = "failed";
+              item.retryable = true;
+              item.error = "本体の削除は未確認です。削除を再試行してください。";
+            } else if (operation.type === "upload" || operation.type === "tile-split") {
+              item.status = "failed";
+              item.retryable = true;
+              item.error =
+                "現時点で登録を確認できません。既に保存されている可能性があります。同じIDで再試行できます。";
+            } else {
+              item.status = "failed";
+              item.retryable = false;
+              item.error = "更新対象が見つかりません。";
+            }
+          } else item.error = `結果を確認できませんでした。${message(error)}`;
+        }
+      }
+      this.summarize(operation);
+      this.changed();
+      return operation.status === "completed";
+    })().finally(() => {
+      this.controllers.delete(id);
+      this.running.delete(id);
+    });
+    this.running.set(id, work);
+    await work;
+  }
+  async update(file: StoredFile, name: string, description: string, tagIds: string[]) {
+    if (!name.trim()) throw new Error("素材名を入力してください。");
+    await this.startOperation("bulk-tag", [
+      {
+        id: file.assetId,
+        fileId: file.fileId,
+        name: name.trim(),
+        expectedVersion: file.version,
+        metadata: { name: name.trim(), description, tagIds },
+      },
+    ]);
   }
   async blob(file: StoredFile) {
     const blob = await storage.getFile(file.fileId);
@@ -378,77 +558,87 @@ export class AssetService extends EventTarget {
         ? blob
         : new Blob([blob], { type: mime || file.mimeType });
   }
-  async thumb(file: StoredFile) {
-    return this.thumbnailQueue.run(async () => {
-      const cached = await db.thumbnails.get(file.assetId);
-      if (cached?.version === file.version)
-        return (
-          cached.blob ||
-          (cached.bytes ? new Blob([cached.bytes], { type: "image/png" }) : undefined)
-        );
-      if (!storage.connected) return undefined;
-      let blob: Blob;
-      if (editorKind(file) === "character") {
-        const data = JSON.parse(await (await this.blob(file)).text());
-        if (
-          typeof data.previewImage !== "string" ||
-          !/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(data.previewImage) ||
-          data.previewImage.length > 300000
-        )
-          return undefined;
-        blob = new Blob(
-          [Uint8Array.from(atob(data.previewImage.split(",")[1]), (c) => c.charCodeAt(0))],
-          { type: "image/png" },
-        );
-      } else blob = await thumbnail(await this.blob(file));
-      const cache = {
-        assetId: file.assetId,
-        version: file.version,
-        blob,
-      };
-      try {
-        await db.thumbnails.put(cache);
-      } catch (error) {
-        if (!(error instanceof Error) || !["UnknownError", "DataCloneError"].includes(error.name))
-          throw error;
-        await db.thumbnails.put({
-          ...cache,
-          blob: undefined,
-          bytes: await blob.arrayBuffer(),
-        });
-      }
-      return blob;
-    });
+  async thumb(file: StoredFile): Promise<Blob | undefined> {
+    const key = `${file.assetId}:${file.version}`;
+    const cached = this.thumbnails.get(key);
+    if (cached) {
+      this.thumbnails.delete(key);
+      this.thumbnails.set(key, cached);
+      return cached;
+    }
+    if (this.thumbnailFailures.has(key) || !storage.connected) return undefined;
+    const existing = this.thumbnailRequests.get(key);
+    if (existing) return existing;
+    const work = this.thumbnailQueue
+      .run(async () => {
+        let blob: Blob;
+        if (editorKind(file) === "character") {
+          const data = JSON.parse(await (await this.blob(file)).text());
+          if (
+            typeof data.previewImage !== "string" ||
+            !/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(data.previewImage) ||
+            data.previewImage.length > 300000
+          )
+            return undefined;
+          blob = new Blob(
+            [
+              Uint8Array.from(atob(data.previewImage.split(",")[1]), (value) =>
+                value.charCodeAt(0),
+              ),
+            ],
+            { type: "image/png" },
+          );
+        } else blob = await thumbnail(await this.blob(file));
+        if (blob.size <= 16 * 1024 * 1024) {
+          this.thumbnails.set(key, blob);
+          this.thumbnailBytes += blob.size;
+          while (this.thumbnails.size > 128 || this.thumbnailBytes > 16 * 1024 * 1024) {
+            const oldest = this.thumbnails.entries().next().value;
+            if (!oldest) break;
+            this.thumbnails.delete(oldest[0]);
+            this.thumbnailBytes -= oldest[1].size;
+          }
+        }
+        return blob;
+      })
+      .then((blob) => {
+        if (!blob) this.thumbnailFailures.add(key);
+        return blob;
+      })
+      .catch(() => {
+        this.thumbnailFailures.add(key);
+        return undefined;
+      })
+      .finally(() => this.thumbnailRequests.delete(key));
+    this.thumbnailRequests.set(key, work);
+    return work;
   }
   async saveProject(kind: Kind, project: Project, version?: string) {
+    const token = this.cancellation;
     validateProject(kind, project);
-    this.requireConnected();
+    const existing = this.files.find((file) => file.assetId === project.id);
     const content = jsonBlob(project);
-    const existing = this.files.find((f) => f.assetId === project.id);
-    let stored: StoredFile;
-    if (existing) {
-      stored = await storage.updateContent(existing.fileId, content, version || existing.version);
-      if (stored.name !== `${project.name}.json` || !stored.tagIds.includes(`editor-${kind}`))
-        stored = await storage.updateMetadata(
-          stored.fileId,
-          {
-            name: `${project.name}.json`,
-            tagIds: [...new Set([...stored.tagIds, `editor-${kind}`])],
-          },
-          stored.version,
-        );
-    } else
-      stored = await storage.createFile({
-        content,
-        metadata: {
-          assetId: project.id,
-          name: `${project.name}.json`,
-          type: "json",
-          tagIds: ["json", `editor-${kind}`],
-        },
-      });
-    await this.putFile(stored);
-    return stored;
+    const metadata = {
+      assetId: project.id,
+      name: `${project.name}.json`,
+      type: "json" as const,
+      mimeType: "application/json",
+      description: existing?.description || "",
+      tagIds: [...new Set([...(existing?.tagIds || ["json"]), `editor-${kind}`])],
+      sha256: await hashBlob(content),
+    };
+    if (token !== this.cancellation) return undefined;
+    const complete = await this.startOperation(existing ? "content-update" : "upload", [
+      {
+        id: project.id,
+        fileId: existing?.fileId,
+        name: metadata.name,
+        blob: content,
+        metadata,
+        expectedVersion: version || existing?.version,
+      },
+    ]);
+    return complete ? this.files.find((file) => file.assetId === project.id) : undefined;
   }
   async openProject(file: StoredFile): Promise<Project> {
     const data = JSON.parse(await (await storage.getFile(file.fileId)).text());
@@ -460,27 +650,29 @@ export class AssetService extends EventTarget {
   }
   async references(ids: string[]) {
     const found: string[] = [];
-    for (const f of this.files.filter((f) => ["map", "character"].includes(editorKind(f) || ""))) {
+    for (const file of this.files.filter((entry) =>
+      ["map", "character"].includes(editorKind(entry) || ""),
+    )) {
       try {
-        const p = await this.openProject(f);
-        if (referenceIds(p).some((id) => ids.includes(id))) found.push(f.name);
+        const project = await this.openProject(file);
+        if (referenceIds(project).some((id) => ids.includes(id))) found.push(file.name);
       } catch {
-        found.push(`${f.name}（参照の確認に失敗）`);
+        found.push(`${file.name}（参照の確認に失敗）`);
       }
     }
     return [...new Set(found)];
   }
   async diagnostics() {
     const issues: string[] = [];
-    const ids = new Set(this.files.map((f) => f.assetId));
-    for (const f of this.files) {
-      if (editorKind(f))
+    const ids = new Set(this.files.map((file) => file.assetId));
+    for (const file of this.files) {
+      if (editorKind(file))
         try {
-          const p = await this.openProject(f);
-          for (const id of referenceIds(p))
-            if (!ids.has(id)) issues.push(`${f.name}: 素材 ${id} が見つかりません`);
-        } catch (e) {
-          issues.push(`${f.name}: ${String(e)}`);
+          const project = await this.openProject(file);
+          for (const id of referenceIds(project))
+            if (!ids.has(id)) issues.push(`${file.name}: 素材 ${id} が見つかりません`);
+        } catch (error) {
+          issues.push(`${file.name}: ${message(error)}`);
         }
     }
     return issues;

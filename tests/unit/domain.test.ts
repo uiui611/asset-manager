@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { tileRects } from "../../src/canvas/images";
-import { encodeProperties, validateWriteSize } from "../../src/domain/metadata";
+import { validateMetadata, validateWriteSize } from "../../src/domain/metadata";
 import type { MapProject, StoredFile } from "../../src/domain/models";
 import { AssetSearch } from "../../src/domain/search";
 import { validateProject } from "../../src/schemas/projects";
@@ -11,8 +11,8 @@ describe("asset metadata", () => {
     expect(() => validateWriteSize([1_000_000_000])).not.toThrow();
   });
   it("allows long tags without Drive byte limits", () => {
-    expect(() => encodeProperties({ tagIds: ["長いタグ".repeat(20)] })).not.toThrow();
-    expect(() => encodeProperties({ tagIds: Array(51).fill("x") })).toThrow();
+    expect(() => validateMetadata({ tagIds: ["長いタグ".repeat(20)] })).not.toThrow();
+    expect(() => validateMetadata({ tagIds: Array(51).fill("x") })).toThrow();
   });
 });
 describe("map schema and tile geometry", () => {

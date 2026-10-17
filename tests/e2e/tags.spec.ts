@@ -24,6 +24,10 @@ async function seed(page: Page) {
   );
   let creations = 0;
   await page.route("**/api/tags", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({ json: tags });
+      return;
+    }
     const name = route.request().postDataJSON().name;
     if (name === "失敗") {
       await route.fulfill({ status: 503, json: { error: "タグを保存できませんでした。" } });
@@ -37,10 +41,14 @@ async function seed(page: Page) {
     if (!tags.includes(tag)) tags.push(tag);
     await route.fulfill({ json: tag });
   });
+  await page.route("**/api/assets?*", (route) => route.fulfill({ json: { files } }));
   await page.route("**/api/assets/*", async (route) => {
     const file = files.find((f) => route.request().url().endsWith(`/${f.fileId}`));
     if (!file) throw new Error("missing file");
-    if (route.request().method() === "PATCH") Object.assign(file, route.request().postDataJSON());
+    if (route.request().method() === "PATCH")
+      Object.assign(file, route.request().postDataJSON(), {
+        version: String(Number(file.version) + 1),
+      });
     await route.fulfill({ json: file });
   });
   await page.goto("/");
@@ -48,11 +56,10 @@ async function seed(page: Page) {
   await page.evaluate(
     async ({ files, tags }) => {
       const { app, storage } = await import("/src/application/asset-service.ts");
-      const { db } = await import("/src/database/db.ts");
       await app.init();
       storage.connected = true;
-      await db.assets.bulkPut(files);
-      await db.tags.bulkPut(tags);
+      app.files = files;
+      app.tags = tags;
       await app.refresh();
     },
     { files, tags },
@@ -94,6 +101,9 @@ test("creates, reuses, removes and searches tags through keyboard-accessible com
   await expect(dialog).toHaveCount(0);
   expect(state.files[0].tagIds).toEqual(["json", "custom-1", "editor-map"]);
   await page.reload();
+  await page.evaluate(async () =>
+    (await import("/src/application/asset-service.ts")).app.connect(),
+  );
   await page.getByRole("textbox", { name: "素材を検索", exact: true }).fill("森の背景");
   await expect(page.locator("asset-card")).toHaveCount(1);
   await page.getByRole("textbox", { name: "素材を検索", exact: true }).fill("");
@@ -180,7 +190,9 @@ test("restores user tags using the server IDs rather than backup IDs", async ({ 
   expect(state.files[0].tagIds).toEqual(["json", "custom-1"]);
   expect(
     await page.evaluate(async () =>
-      (await import("/src/database/db.ts")).db.tags.get("old-custom"),
+      (await import("/src/application/asset-service.ts")).app.tags.find(
+        (tag) => tag.tagId === "old-custom",
+      ),
     ),
   ).toBeUndefined();
   await page.getByRole("button", { name: /素材ライブラリ/ }).click();

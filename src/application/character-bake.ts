@@ -1,7 +1,7 @@
 import { loadImage } from "../canvas/images";
 import { drawCharacter } from "../canvas/renderers";
 import { validateWriteSize } from "../domain/metadata";
-import type { CharacterComposition, CharacterLayer, StoredFile } from "../domain/models";
+import type { CharacterComposition, CharacterLayer, Operation, StoredFile } from "../domain/models";
 import { validateProject } from "../schemas/projects";
 import { app, storage } from "./asset-service";
 import { hashBlob } from "./media";
@@ -16,6 +16,7 @@ export interface BakedLayer {
 export async function prepareCharacterLayers(
   project: CharacterComposition,
   onProgress: (done: number, total: number) => void,
+  checkActive: () => void = () => {},
 ): Promise<BakedLayer[]> {
   validateProject("character", project);
   if (!project.layers.length) throw new Error("切り出すレイヤーがありません。");
@@ -33,14 +34,18 @@ export async function prepareCharacterLayers(
     return file;
   });
   const prepared: BakedLayer[] = [];
+  const signal = storage.writeSignal;
   for (let i = 0; i < project.layers.length; i++) {
+    checkActive();
     const layer = project.layers[i],
       file = files[i],
-      metadata = await storage.getMetadata(file.fileId);
+      metadata = await storage.getMetadata(file.fileId, signal);
+    checkActive();
     if (metadata.version !== file.version)
       throw new Error(`${file.name} は更新されています。一覧を更新してから再実行してください。`);
     const image = await loadImage(await app.blob(file)),
       canvas = document.createElement("canvas");
+    checkActive();
     drawCharacter(canvas, { ...project, layers: [{ ...layer, visible: true }] }, () => image);
     const blob = await new Promise<Blob>((resolve, reject) =>
       canvas.toBlob(
@@ -56,21 +61,36 @@ export async function prepareCharacterLayers(
       sha256: await hashBlob(blob),
       name: `${file.name.replace(/\.[^.]+$/, "")}.png`,
     };
+    checkActive();
     prepared.push(entry);
     validateWriteSize(prepared.map((x) => x.blob.size));
     onProgress(i + 1, project.layers.length);
   }
   return prepared;
 }
-export async function overwriteBakedLayer(item: BakedLayer) {
-  try {
-    return await storage.updateContent(item.file.fileId, item.blob, item.file.version, {
-      name: item.name,
-    });
-  } catch (error) {
-    // A lost response can follow a successful write. Recover only an exact content match.
-    const current = await storage.getMetadata(item.file.fileId).catch(() => undefined);
-    if (current?.sha256 === item.sha256 && current.name === item.name) return current;
-    throw error;
-  }
+export async function overwriteBakedLayer(
+  item: BakedLayer,
+  onCreated: (operation: Operation) => void,
+) {
+  return app.startOperation(
+    "content-update",
+    [
+      {
+        id: item.file.assetId,
+        fileId: item.file.fileId,
+        name: item.name,
+        expectedVersion: item.file.version,
+        blob: item.blob,
+        metadata: {
+          ...item.file,
+          name: item.name,
+          mimeType: "image/png",
+          size: item.blob.size,
+          sha256: item.sha256,
+        },
+      },
+    ],
+    [],
+    onCreated,
+  );
 }

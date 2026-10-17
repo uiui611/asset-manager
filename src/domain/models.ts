@@ -8,7 +8,6 @@ export interface StoredFile {
   size: number;
   modifiedTime: string;
   version: string;
-  md5Checksum?: string;
   sha256?: string;
   tagIds: string[];
   description: string;
@@ -80,23 +79,36 @@ export interface SoundPreset {
   updatedAt: string;
 }
 export type Project = MapProject | CharacterComposition | SoundPreset;
-export interface JournalItem {
+export type OperationStatus =
+  | "pending"
+  | "running"
+  | "failed"
+  | "unknown"
+  | "completed"
+  | "cancelled";
+export interface OperationItem {
   id: string;
   name: string;
   blob?: Blob;
-  bytes?: ArrayBuffer;
-  blobType?: string;
   metadata?: Partial<StoredFile>;
   fileId?: string;
+  expectedVersion?: string;
+  status?: OperationStatus;
+  error?: string;
+  retryable?: boolean;
+  resultCheck?: "not-saved" | "mismatch";
 }
-export interface OperationJournal {
+/** Current-page operation state. It is never persisted or resumed on startup. */
+export interface Operation {
   id: string;
-  type: "tile-split" | "upload" | "bulk-tag" | "bulk-trash";
-  status: "pending" | "running" | "completed" | "failed";
+  type: "tile-split" | "upload" | "bulk-tag" | "bulk-trash" | "content-update";
+  status: OperationStatus;
+  canRetry: boolean;
+  resultCheckRequired?: boolean;
   sourceAssetIds: string[];
   completedItems: string[];
   pendingItems: string[];
-  items: JournalItem[];
+  items: OperationItem[];
   error?: string;
   createdAt: string;
 }
