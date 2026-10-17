@@ -17,13 +17,12 @@ export class SyncService {
     } while (cursor);
     await this.db.transaction(
       "rw",
-      [this.db.assets, this.db.fileMap, this.db.thumbnails, this.db.waveforms, this.db.syncState],
+      [this.db.assets, this.db.fileMap, this.db.thumbnails, this.db.syncState],
       async () => {
         const versions = new Map(files.map((f) => [f.assetId, f.version]));
         for (const old of await this.db.assets.toArray())
           if (versions.get(old.assetId) !== old.version) {
             await this.db.thumbnails.delete(old.assetId);
-            await this.db.waveforms.delete(old.assetId);
           }
         await this.db.assets.clear();
         await this.db.assets.bulkPut(files);
