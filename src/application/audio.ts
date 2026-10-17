@@ -1,16 +1,29 @@
 import { jsfxr, sfxr } from "jsfxr";
 import type { SoundPreset, SoundTrack } from "../domain/models";
+import { soundControls, soundParameterMax } from "../domain/sound-parameters";
 import { validateProject } from "../schemas/projects";
 
 let context: AudioContext | undefined;
 let source: AudioBufferSourceNode | undefined;
+let playbackVersion = 0;
 export const hasWebAudio = () => typeof AudioContext !== "undefined";
-export const soundDefaults = () => ({
-  ...sfxr.generate("pickupCoin"),
-  sound_vol: 0.2,
-  sample_rate: 44100,
-  sample_size: 16,
-});
+export function generateSound(preset: string) {
+  const parameters: SoundTrack["parameters"] = {
+    ...sfxr.generate(preset),
+    sound_vol: 0.2,
+    sample_rate: 44100,
+    sample_size: 16,
+  };
+  // jsfxr's random generator can exceed the editor's ranges, including negative envelopes.
+  for (const [key, , min] of soundControls) {
+    const value = Number(parameters[key]);
+    parameters[key] = Number.isFinite(value)
+      ? Math.min(soundParameterMax(key), Math.max(min, value))
+      : min;
+  }
+  return parameters;
+}
+export const soundDefaults = () => generateSound("pickupCoin");
 export function peaks(samples: Float32Array | number[], bins = 160) {
   return Array.from({ length: bins }, (_, i) => {
     const start = Math.floor((i * samples.length) / bins),
@@ -21,6 +34,7 @@ export function peaks(samples: Float32Array | number[], bins = 160) {
   });
 }
 export function stopPreset() {
+  playbackVersion++;
   source?.stop();
   source = undefined;
 }
@@ -51,13 +65,13 @@ export function samplesToWav(samples: number[] | Float32Array) {
 }
 
 export function renderTrack(track: SoundTrack): Float32Array {
-  return new Float32Array(
-    new jsfxr.SoundEffect({
-      ...track.parameters,
-      sample_rate: 44100,
-      sound_vol: Math.min(0.5, Math.max(0, Number(track.parameters.sound_vol ?? 0.2))),
-    }).getRawBuffer().normalized,
-  ).slice(0, 44100 * 20);
+  const samples = new jsfxr.SoundEffect({
+    ...track.parameters,
+    sample_rate: 44100,
+    sound_vol: Math.min(0.5, Math.max(0, Number(track.parameters.sound_vol ?? 0.2))),
+  }).getRawBuffer().normalized;
+  // A zero-length envelope stage in jsfxr can emit NaN at the transition.
+  return Float32Array.from(samples.slice(0, 44100 * 20), (v) => (Number.isFinite(v) ? v : 0));
 }
 /** Sum tracks on one timeline, then apply a shared peak limiter to avoid clipping. */
 export function mixSamples(
@@ -86,9 +100,11 @@ export function renderMix(preset: SoundPreset) {
 }
 export async function playSamples(samples: Float32Array) {
   if (!hasWebAudio()) throw new Error("この環境では音声を再生できません。");
+  stopPreset();
+  const version = playbackVersion;
   context ??= new AudioContext();
   await context.resume();
-  stopPreset();
+  if (version !== playbackVersion) return;
   const buffer = context.createBuffer(1, Math.max(1, samples.length), 44100);
   buffer.copyToChannel(new Float32Array(samples), 0);
   source = context.createBufferSource();

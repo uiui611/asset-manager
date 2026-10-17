@@ -173,7 +173,7 @@ test("tile composition rejects mismatched sizes, preserves sources by default, a
     page.locator("asset-palette").getByRole("button", { name: "red.png", exact: true }),
   ).toHaveCount(0);
 });
-test("sound changes remain silent until explicit preview and stop prevents further playback", async ({
+test("sound parameter changes debounce preview and stop prevents further playback", async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -201,7 +201,7 @@ test("sound changes remain silent until explicit preview and stop prevents furth
   const count = () => page.evaluate(() => Reflect.get(window, "previewStarts") as number);
   await page.getByLabel("効果音名", { exact: true }).fill("silent name");
   expect(await count()).toBe(0);
-  // Advance beyond the former debounce window to detect unintended automatic playback.
+  // Loading and renaming stay silent; sound edits preview after the debounce window.
   const clockStart = new Date();
   await page.clock.install({ time: clockStart });
   await page.clock.pauseAt(new Date(clockStart.getTime() + 60_000));
@@ -215,16 +215,16 @@ test("sound changes remain silent until explicit preview and stop prevents furth
   });
   expect(await count()).toBe(0);
   await page.clock.runFor(500);
-  expect(await count()).toBe(0);
-  await page.getByRole("button", { name: "試聴する", exact: true }).click();
   expect(await count()).toBe(1);
+  await page.getByRole("button", { name: "試聴する", exact: true }).click();
+  expect(await count()).toBe(2);
   await slider.evaluate((el) => {
     (el as HTMLInputElement).value = "0.4";
     el.dispatchEvent(new Event("input", { bubbles: true }));
   });
   await page.getByRole("button", { name: "停止", exact: true }).click();
   await page.clock.runFor(500);
-  expect(await count()).toBe(1);
+  expect(await count()).toBe(2);
   const order = await page.locator(".toolbar button").allTextContents();
   expect(order.map((s) => s.trim()).slice(-2)).toEqual(["エクスポート", "WAVを素材として保存"]);
 });
