@@ -4,7 +4,6 @@ import { app, storage } from "../application/asset-service";
 import { confirmDiscard } from "../application/edit-session";
 import { icon } from "../components/icon";
 import { shared } from "../components/styles";
-import { isLibraryFile } from "../domain/library";
 import { currentPage, navigate, type Page } from "./router";
 
 const nav = [
@@ -353,9 +352,7 @@ export class AssetApp extends LitElement {
                   aria-current=${this.page === id ? "page" : "false"}
                 >
                   ${icon(i)}${label}${
-                    id === "assets"
-                      ? html` <span class="count">${app.files.filter(isLibraryFile).length}</span> `
-                      : ""
+                    id === "assets" ? html` <span class="count">${app.files.length}</span> ` : ""
                   }
                 </button>
               `,

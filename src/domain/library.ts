@@ -1,5 +1,4 @@
 import type { StoredFile } from "./models";
-export const isLibraryFile = (_file: StoredFile) => true;
 export function editorKind(file: StoredFile): "map" | "character" | "sound" | undefined {
   if (file.type !== "json") return;
   return (["map", "character", "sound"] as const).find((k) => file.tagIds.includes(`editor-${k}`));

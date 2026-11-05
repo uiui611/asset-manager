@@ -11,7 +11,7 @@ import { loadImage, type SplitOptions } from "../../canvas/images";
 import { DialogController } from "../../components/dialog-controller";
 import { icon } from "../../components/icon";
 import { shared } from "../../components/styles";
-import { isLibraryFile, projectLabel, projectPage } from "../../domain/library";
+import { projectLabel, projectPage } from "../../domain/library";
 import { type OperationItem, type StoredFile, type Tag, uid } from "../../domain/models";
 import { AssetSearch } from "../../domain/search";
 import "../../components/asset-card";
@@ -380,7 +380,7 @@ export class AssetsPage extends LitElement {
     if (this.filesRef !== app.files || this.tagsRef !== app.tags) {
       this.filesRef = app.files;
       this.tagsRef = app.tags;
-      this.search = new AssetSearch(app.files.filter(isLibraryFile), app.tags);
+      this.search = new AssetSearch(app.files, app.tags);
       this.selected = new Set(
         [...this.selected].filter((id) => app.files.some((f) => f.assetId === id)),
       );
@@ -584,7 +584,7 @@ export class AssetsPage extends LitElement {
     if (complete) this.close();
   }
   render() {
-    const files = app.files.filter(isLibraryFile);
+    const files = app.files;
     const results = this.results;
     const audioFiles = results.filter(
       (f) => f.type === "audio" || f.tagIds.includes("editor-sound"),
