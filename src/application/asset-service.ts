@@ -25,7 +25,6 @@ const unfinished = (operation: Operation) => !["completed", "cancelled"].include
 export class AssetService extends EventTarget {
   busy = false;
   uploads = 0;
-  uploadTotal = 0;
   transfers: { id: string; label: string; done: number; total: number }[] = [];
   operations: Operation[] = [];
   status = "";
@@ -164,7 +163,6 @@ export class AssetService extends EventTarget {
     const departure = this.departureGeneration;
     try {
       validateWriteSize(files.map((file) => file.size));
-      this.uploadTotal = files.length;
       this.uploads += files.length;
       this.changed();
       const prepared = await this.prepareImport(files);
@@ -217,7 +215,6 @@ export class AssetService extends EventTarget {
   async startOperation(
     type: Operation["type"],
     items: OperationItem[],
-    sourceAssetIds: string[] = [],
     onCreated?: (operation: Operation) => void,
   ) {
     this.requireConnected();
@@ -244,7 +241,6 @@ export class AssetService extends EventTarget {
       type,
       status: "pending",
       canRetry: true,
-      sourceAssetIds: [...sourceAssetIds],
       completedItems: [],
       pendingItems: items.map((item) => item.id),
       items: items.map((item) => ({
