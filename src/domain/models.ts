@@ -105,7 +105,6 @@ export interface Operation {
   status: OperationStatus;
   canRetry: boolean;
   resultCheckRequired?: boolean;
-  sourceAssetIds: string[];
   completedItems: string[];
   pendingItems: string[];
   items: OperationItem[];
