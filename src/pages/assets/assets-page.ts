@@ -579,7 +579,7 @@ export class AssetsPage extends LitElement {
       }
       if (!this.isConnected || cancellation !== app.cancellationToken)
         throw new DOMException("保存を取り消しました。", "AbortError");
-      return app.startOperation("tile-split", items, [file.assetId]);
+      return app.startOperation("tile-split", items);
     });
     if (complete) this.close();
   }

@@ -1104,23 +1104,19 @@ export class EditorPage extends LitElement {
       const sha256 = await hashBlob(blob);
       if (!this.isConnected || cancellation !== app.cancellationToken)
         throw new DOMException("保存を取り消しました。", "AbortError");
-      await app.startOperation(
-        "upload",
-        [
-          {
-            id,
-            name: `${name}.png`,
-            blob,
-            metadata: {
-              assetId: id,
-              type: "image",
-              tagIds: [],
-              sha256,
-            },
+      await app.startOperation("upload", [
+        {
+          id,
+          name: `${name}.png`,
+          blob,
+          metadata: {
+            assetId: id,
+            type: "image",
+            tagIds: [],
+            sha256,
           },
-        ],
-        [this.project.id],
-      );
+        },
+      ]);
     });
   }
   private async importJson(file?: File) {

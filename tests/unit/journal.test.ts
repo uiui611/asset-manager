@@ -80,7 +80,7 @@ it("associates a compound editor operation before notifications or requests begi
     expect(associated).toBe(service.operations[0].id);
     return stored("a");
   });
-  await service.startOperation("upload", [upload("a")], [], (operation) => {
+  await service.startOperation("upload", [upload("a")], (operation) => {
     associated = operation.id;
   });
   expect(service.operations[0].status).toBe("completed");

@@ -90,7 +90,6 @@ export async function overwriteBakedLayer(
         },
       },
     ],
-    [],
     onCreated,
   );
 }
